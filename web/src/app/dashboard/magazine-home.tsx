@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import type { FeedData, QueryLogItem } from "./clickhouse-feed";
+import type { FeedData, FrequentQuestionItem, QueryLogItem } from "./clickhouse-feed";
 import styles from "./magazine-home.module.css";
 
 type CountItem = {
@@ -14,7 +14,8 @@ function verdictLabel(verdict: string) {
   if (verdict === "true") return "Verified";
   if (verdict === "false") return "False Claim";
   if (verdict === "misleading") return "Misleading";
-  return verdict || "Unknown";
+  if (verdict === "unverified") return "Unverified";
+  return "Unknown";
 }
 
 function verdictTone(verdict: string) {
@@ -62,6 +63,13 @@ function riskRatio(risk: number, total: number) {
   return Math.round((risk / total) * 100);
 }
 
+function percentile(values: number[], p: number) {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const idx = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));
+  return sorted[idx];
+}
+
 function issueLabel(raw?: string) {
   if (!raw) return "Unknown";
   const ts = Date.parse(raw);
@@ -74,22 +82,85 @@ function issueLabel(raw?: string) {
   });
 }
 
+function isEnglishLanguageTag(value?: string) {
+  const token = (value || "").trim().toLowerCase();
+  if (!token) return false;
+  return token === "en" || token === "eng" || token === "english";
+}
+
+function hasNonLatinScript(text: string) {
+  return /[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af\u0600-\u06ff\u0900-\u097f\u0e00-\u0e7f]/.test(text || "");
+}
+
+function shouldTranslate(text: string, languageTag?: string) {
+  if (!text || !text.trim()) return false;
+  if (hasNonLatinScript(text)) return true;
+  return !isEnglishLanguageTag(languageTag);
+}
+
+function canonicalizeQuery(text: string) {
+  return (text || "")
+    .normalize("NFKC")
+    .trim()
+    .toLowerCase()
+    .replace(/[\p{P}\p{S}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function hashCode(input: string) {
+  let hash = 0;
+  for (let i = 0; i < input.length; i += 1) {
+    hash = (hash * 31 + input.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+}
+
 function FeedItem({
   item,
   risk,
+  translated,
+  text,
   crop = 116,
 }: {
   item: QueryLogItem;
   risk?: boolean;
+  translated?: boolean;
+  text?: string;
   crop?: number;
 }) {
   return (
-    <article className={`${styles.feedItem} ${risk ? styles.feedItemRisk : ""}`}>
+    <article
+      className={`${styles.feedItem} ${risk ? styles.feedItemRisk : ""} ${translated ? styles.feedItemTranslated : ""}`}
+    >
       <div className={styles.feedItemMeta}>
         <span className={styles.timeBadge}>{timeLabel(item.timestamp)}</span>
         <span className={`${styles.verdictChip} ${verdictTone(item.verdict)}`}>{verdictLabel(item.verdict)}</span>
       </div>
-      <p className={styles.feedHeadline}>{trimHeadline(item.query, crop)}</p>
+      <p className={styles.feedHeadline}>{text ?? trimHeadline(item.query, crop)}</p>
+    </article>
+  );
+}
+
+function FaqItem({
+  item,
+  question,
+  answer,
+  translated,
+}: {
+  item: FrequentQuestionItem;
+  question: string;
+  answer: string;
+  translated?: boolean;
+}) {
+  return (
+    <article className={`${styles.faqItem} ${translated ? styles.feedItemTranslated : ""}`}>
+      <div className={styles.feedItemMeta}>
+        <span className={styles.metaBadge}>Asked {item.count}x</span>
+        <span className={`${styles.verdictChip} ${verdictTone(item.latestVerdict)}`}>{verdictLabel(item.latestVerdict)}</span>
+      </div>
+      <p className={styles.faqQuestion}>{question}</p>
+      <p className={styles.faqAnswer}>{answer}</p>
     </article>
   );
 }
@@ -98,6 +169,11 @@ export default function MagazineHome({ feed }: { feed: FeedData }) {
   const [page, setPage] = useState(0);
   const [direction, setDirection] = useState<1 | -1>(1);
   const [flipKey, setFlipKey] = useState(0);
+  const [activeWord, setActiveWord] = useState<{ word: string; count: number } | null>(null);
+  const [translateToEnglish, setTranslateToEnglish] = useState(false);
+  const [translationLoading, setTranslationLoading] = useState(false);
+  const [translationError, setTranslationError] = useState("");
+  const [translatedMap, setTranslatedMap] = useState<Record<string, string>>({});
 
   const recent = useMemo(() => feed.recentItems, [feed.recentItems]);
   const risks = useMemo(() => feed.riskItems, [feed.riskItems]);
@@ -118,11 +194,162 @@ export default function MagazineHome({ feed }: { feed: FeedData }) {
     ).slice(0, 6),
     [recent],
   );
-  const totalPages = 10;
+  const frequentQuestions = useMemo(() => feed.frequentQuestions ?? [], [feed.frequentQuestions]);
+  const fakeFacts = useMemo(() => feed.fakeNewsFacts ?? [], [feed.fakeNewsFacts]);
+  const wordMap = useMemo(() => feed.wordMap ?? [], [feed.wordMap]);
+  const cloudWords = useMemo(() => {
+    const slots = [
+      [50, 44], [34, 58], [66, 58], [50, 70], [24, 44], [76, 44], [58, 30], [42, 30], [26, 70], [74, 70],
+      [17, 56], [83, 56], [13, 38], [87, 38], [20, 26], [80, 26], [50, 18], [35, 16], [65, 16], [50, 82],
+      [30, 82], [70, 82], [10, 70], [90, 70],
+    ] as Array<[number, number]>;
+
+    const placed: Array<{ x: number; y: number; w: number; h: number }> = [];
+    const out: Array<{ word: string; count: number; x: number; y: number; rotate: number; size: number }> = [];
+
+    for (let index = 0; index < Math.min(wordMap.length, 22); index += 1) {
+      const item = wordMap[index];
+      const base = slots[index % slots.length];
+      const h = hashCode(item.word);
+      const size = 1 + Math.min(item.count, 12) * 0.16;
+      const rotate = ((h % 3) - 1) * 8;
+
+      // Approximate text footprint in percentage units inside the cloud canvas.
+      const w = Math.min(34, Math.max(8, item.word.length * size * 0.95));
+      const hh = Math.min(10, Math.max(4.8, size * 3.8));
+
+      let best = { x: base[0], y: base[1] };
+      let found = false;
+
+      for (let attempt = 0; attempt < 18; attempt += 1) {
+        const ring = Math.floor(attempt / 6) + 1;
+        const theta = ((attempt * 47 + h) % 360) * (Math.PI / 180);
+        const radiusX = ring * 4.2;
+        const radiusY = ring * 3.6;
+        const x = Math.max(7 + w / 2, Math.min(93 - w / 2, base[0] + Math.cos(theta) * radiusX));
+        const y = Math.max(13 + hh / 2, Math.min(87 - hh / 2, base[1] + Math.sin(theta) * radiusY));
+
+        const overlaps = placed.some((p) => Math.abs(x - p.x) < (w + p.w) / 2 && Math.abs(y - p.y) < (hh + p.h) / 2);
+        if (!overlaps) {
+          best = { x, y };
+          found = true;
+          break;
+        }
+      }
+
+      if (!found) {
+        const x = Math.max(7 + w / 2, Math.min(93 - w / 2, base[0]));
+        const y = Math.max(13 + hh / 2, Math.min(87 - hh / 2, base[1]));
+        best = { x, y };
+      }
+
+      placed.push({ x: best.x, y: best.y, w, h: hh });
+      out.push({ ...item, x: best.x, y: best.y, rotate, size });
+    }
+
+    return out;
+  }, [wordMap]);
+  const pageLabels = [
+    "Cover",
+    "Contents",
+    "Lead Case",
+    "Recent Enquiries",
+    "Repeated Enquiries",
+    "Misinformation Cases",
+    "Credibility Outcomes",
+    "Multilingual Access",
+    "Word Cloud",
+    "Fact-check Sources",
+    "Trust Signals",
+  ];
+  const translatableQueries = useMemo(() => {
+    const pool = [...recent, ...risks];
+    const nonEnglishQueries = pool
+      .filter((item) => shouldTranslate(item.query, item.language))
+      .map((item) => item.query);
+    const nonEnglishLabels = [
+      ...mediaMix.map((row) => row.label),
+      ...languageMix.map((row) => row.label),
+      lead?.media_type ?? "",
+      lead?.language ?? "",
+    ].filter((x) => shouldTranslate(x));
+    const nonEnglishFaqs = frequentQuestions
+      .filter((item) => shouldTranslate(item.question, item.latestLanguage) || shouldTranslate(item.answer, item.latestLanguage))
+      .flatMap((item) => [item.question, item.answer]);
+    const factStrings = fakeFacts
+      .flatMap((fact) => [fact.source, fact.title, fact.summary])
+      .filter((x) => shouldTranslate(x));
+    const wordStrings = wordMap.map((x) => x.word).filter((x) => shouldTranslate(x));
+    return [...new Set([...nonEnglishQueries, ...nonEnglishFaqs, ...nonEnglishLabels, ...factStrings, ...wordStrings].filter(Boolean))];
+  }, [recent, risks, frequentQuestions, mediaMix, languageMix, lead?.media_type, lead?.language, fakeFacts, wordMap]);
+  const totalPages = 11;
 
   const isTimeout = (feed.error ?? "").toLowerCase().includes("timeout");
   const issueStamp = issueLabel(feed.updatedAt);
   const dangerRate = riskRatio(risks.length, recent.length || 1);
+  const knownVerdicts = recent.filter((x) => ["true", "false", "misleading", "unverified"].includes(x.verdict)).length;
+  const verdictCoverage = recent.length ? Math.round((knownVerdicts / recent.length) * 100) : 0;
+  const nonEnglishCount = recent.filter((x) => !isEnglishLanguageTag(x.language)).length;
+  const nonEnglishShare = recent.length ? Math.round((nonEnglishCount / recent.length) * 100) : 0;
+  const uniqueLanguages = new Set(recent.map((x) => (x.language || "unknown").toLowerCase())).size;
+  const p95Response = percentile(
+    recent.map((x) => Number(x.response_time_ms ?? 0)).filter((x) => Number.isFinite(x) && x > 0),
+    95,
+  );
+  const normalizedQueries = recent.map((x) => canonicalizeQuery(x.query)).filter(Boolean);
+  const duplicateCount = normalizedQueries.length - new Set(normalizedQueries).size;
+  const repeatRate = normalizedQueries.length ? Math.round((duplicateCount / normalizedQueries.length) * 100) : 0;
+  const unverifiedCount = recent.filter((x) => x.verdict === "unverified").length;
+  const uncertaintyRate = recent.length ? Math.round((unverifiedCount / recent.length) * 100) : 0;
+
+  function plainText(raw: string) {
+    return translateToEnglish ? translatedMap[raw] || raw : raw;
+  }
+
+  function queryText(raw: string, crop = 88) {
+    return trimHeadline(plainText(raw), crop);
+  }
+
+  async function fetchMissingTranslations() {
+    const missing = translatableQueries.filter((q) => !translatedMap[q]);
+    if (missing.length === 0) return;
+
+    setTranslationLoading(true);
+    setTranslationError("");
+    try {
+      const response = await fetch("/api/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ texts: missing }),
+      });
+      const payload = (await response.json()) as { ok?: boolean; error?: string; translations?: string[] };
+      if (!response.ok || !payload.ok || !Array.isArray(payload.translations)) {
+        throw new Error(payload.error || "Failed to translate dashboard content.");
+      }
+
+      const nextMap: Record<string, string> = {};
+      for (let i = 0; i < missing.length; i += 1) {
+        nextMap[missing[i]] = payload.translations[i] || missing[i];
+      }
+      setTranslatedMap((prev) => ({ ...prev, ...nextMap }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Translation failed.";
+      setTranslationError(message);
+      setTranslateToEnglish(false);
+    } finally {
+      setTranslationLoading(false);
+    }
+  }
+
+  async function onToggleTranslate() {
+    const next = !translateToEnglish;
+    setTranslateToEnglish(next);
+    if (next) {
+      await fetchMissingTranslations();
+    } else {
+      setTranslationError("");
+    }
+  }
 
   function go(delta: 1 | -1) {
     const next = page + delta;
@@ -161,14 +388,14 @@ export default function MagazineHome({ feed }: { feed: FeedData }) {
           <div className={styles.scrollBlock}>
             <div className={styles.tocList}>
               {[
-                { n: "01", title: "Cover Feature", desc: lead ? `"${trimHeadline(lead.query, 72)}"` : "No lead record available" },
-                { n: "02", title: "Frontline Bulletin", desc: `${recentBoard.length} recent question${recentBoard.length !== 1 ? "s" : ""} logged` },
-                { n: "03", title: "Question Ledger", desc: `${questionBoard.length} inquiries in the last 30 days` },
-                { n: "04", title: "Fraud Radar", desc: risks.length > 0 ? `${risks.length} high-risk signal${risks.length !== 1 ? "s" : ""} detected` : "No risk signals in current window" },
-                { n: "05", title: "Verdict Spectrum", desc: `${feed.verdictCounts.length} verdict ${feed.verdictCounts.length !== 1 ? "categories" : "category"} · 14-day window` },
-                { n: "06", title: "Topic & Language", desc: `${mediaMix.length} media type${mediaMix.length !== 1 ? "s" : ""} · ${languageMix.length} language${languageMix.length !== 1 ? "s" : ""} detected` },
-                { n: "07", title: "Editorial Notebook", desc: lead ? `Focus: ${trimHeadline(lead.query, 55)}` : "No focus story available" },
-                { n: "08", title: "Action Blueprint", desc: `${dangerRate}% risk rate · ${recent.length} total records` },
+                { n: "01", title: "Lead Case", desc: lead ? `"${queryText(lead.query, 72)}"` : "No lead record available" },
+                { n: "02", title: "Recent Enquiries", desc: `${recentBoard.length} recent question${recentBoard.length !== 1 ? "s" : ""}` },
+                { n: "03", title: "Misinformation Cases", desc: risks.length > 0 ? `${risks.length} false/misleading case${risks.length !== 1 ? "s" : ""}` : "No misinformation cases in this window" },
+                { n: "04", title: "Credibility Outcomes", desc: `${feed.verdictCounts.length} verdict ${feed.verdictCounts.length !== 1 ? "categories" : "category"}` },
+                { n: "05", title: "Multilingual Access", desc: `${languageMix.length} language${languageMix.length !== 1 ? "s" : ""} across ${mediaMix.length} media type${mediaMix.length !== 1 ? "s" : ""}` },
+                { n: "06", title: "Word Cloud", desc: `${wordMap.length} frequent keyword${wordMap.length !== 1 ? "s" : ""} from cleaned queries` },
+                { n: "07", title: "Fact-check Sources", desc: `${fakeFacts.length} recent web fact-check item${fakeFacts.length !== 1 ? "s" : ""}` },
+                { n: "08", title: "Trust Signals", desc: `Risk rate ${dangerRate}% · ${recent.length} total records` },
               ].map((item) => (
                 <div key={item.n} className={styles.tocItem}>
                   <span className={styles.tocNumber}>{item.n}</span>
@@ -189,23 +416,23 @@ export default function MagazineHome({ feed }: { feed: FeedData }) {
         </article>
       )}
 
-      {/* Page 2: Cover Feature */}
+      {/* Page 2: Lead Case */}
       {page === 2 && (
         <article className={styles.panel}>
           <header>
-            <p className={styles.sectionTag}>Cover Feature</p>
+            <p className={styles.sectionTag}>Lead Case</p>
             <h2 className={styles.panelTitle}>
               {risks.length > 0
-                ? `${risks.length} High-Risk Signal${risks.length !== 1 ? "s" : ""} Require Your Attention`
-                : "No High-Risk Signals in Current Window"}
+                ? `Primary misinformation case in this 30-day window`
+                : "No misinformation case found in this 30-day window"}
             </h2>
             <p className={styles.panelSubtitle}>
-              {recent.length} records from the last 30 days · {risks.length} high-risk {risks.length !== 1 ? "entries" : "entry"} · {dangerRate}% risk rate. Lead verdict: {lead ? verdictLabel(lead.verdict) : "N/A"}.
+              {recent.length} records in 30 days. Risk rate = (false + misleading) / total = {dangerRate}%. Lead verdict: {lead ? verdictLabel(lead.verdict) : "N/A"}.
             </p>
           </header>
           <div className={styles.scrollBlock}>
-            <p className={styles.pullQuote}>
-              "{lead ? trimHeadline(lead.query, 164) : "No records found in the last 30 days."}"
+            <p className={`${styles.pullQuote} ${translateToEnglish ? styles.translatedBlock : ""}`}>
+              &quot;{lead ? queryText(lead.query, 164) : "No records found in the last 30 days."}&quot;
             </p>
             <div className={styles.splitStats}>
               <div className={styles.statCard}>
@@ -225,19 +452,19 @@ export default function MagazineHome({ feed }: { feed: FeedData }) {
           <div className={styles.storyMetaRow}>
             <span className={styles.timeBadge}>{lead ? timeLabel(lead.timestamp) : issueStamp}</span>
             {lead ? <span className={`${styles.verdictChip} ${verdictTone(lead.verdict)}`}>{verdictLabel(lead.verdict)}</span> : null}
-            {lead?.media_type ? <span className={styles.metaBadge}>{lead.media_type}</span> : null}
-            {lead?.language ? <span className={styles.metaBadge}>{lead.language}</span> : null}
+            {lead?.media_type ? <span className={styles.metaBadge}>{plainText(lead.media_type)}</span> : null}
+            {lead?.language ? <span className={styles.metaBadge}>{plainText(lead.language)}</span> : null}
           </div>
         </article>
       )}
 
-      {/* Page 3: Frontline Bulletin */}
+      {/* Page 3: Recent Enquiries */}
       {page === 3 && (
         <article className={styles.panel}>
           <header>
-            <p className={styles.sectionTag}>Frontline Bulletin</p>
+            <p className={styles.sectionTag}>Recent Enquiries</p>
             <h3 className={styles.panelTitle}>
-              {recentBoard.length > 0 ? `${recentBoard.length} Recently Updated Questions` : "No Recent Questions"}
+              {recentBoard.length > 0 ? `${recentBoard.length} Most Recent Community Questions` : "No Recent Questions"}
             </h3>
           </header>
           <div className={styles.scrollBlock}>
@@ -246,7 +473,13 @@ export default function MagazineHome({ feed }: { feed: FeedData }) {
             ) : (
               <div className={styles.feedList}>
                 {recentBoard.map((item, index) => (
-                  <FeedItem key={`cover-${index}`} item={item} crop={126} />
+                  <FeedItem
+                    key={`cover-${index}`}
+                    item={item}
+                    crop={126}
+                    translated={translateToEnglish}
+                    text={queryText(item.query, 126)}
+                  />
                 ))}
               </div>
             )}
@@ -270,7 +503,13 @@ export default function MagazineHome({ feed }: { feed: FeedData }) {
             ) : (
               <div className={styles.feedList}>
                 {questionBoard.map((item, index) => (
-                  <FeedItem key={`q-${index}`} item={item} crop={140} />
+                  <FeedItem
+                    key={`q-${index}`}
+                    item={item}
+                    crop={140}
+                    translated={translateToEnglish}
+                    text={queryText(item.query, 140)}
+                  />
                 ))}
               </div>
             )}
@@ -281,13 +520,13 @@ export default function MagazineHome({ feed }: { feed: FeedData }) {
         </article>
       )}
 
-      {/* Page 5: Fraud Radar */}
+      {/* Page 5: Misinformation Cases */}
       {page === 5 && (
         <article className={styles.panel}>
           <header>
-            <p className={styles.sectionTag}>Fraud Radar</p>
+            <p className={styles.sectionTag}>Misinformation Cases</p>
             <h3 className={styles.panelTitle}>
-              {risks.length > 0 ? `${risks.length} Active Risk Signal${risks.length !== 1 ? "s" : ""}` : "No Active Risk Signals"}
+              {risks.length > 0 ? `${risks.length} False or Misleading Cases` : "No False or Misleading Cases"}
             </h3>
           </header>
           <div className={styles.scrollBlock}>
@@ -296,7 +535,14 @@ export default function MagazineHome({ feed }: { feed: FeedData }) {
             ) : (
               <div className={styles.feedList}>
                 {riskBoard.map((item, index) => (
-                  <FeedItem key={`risk-${index}`} item={item} risk crop={132} />
+                  <FeedItem
+                    key={`risk-${index}`}
+                    item={item}
+                    risk
+                    crop={132}
+                    translated={translateToEnglish}
+                    text={queryText(item.query, 132)}
+                  />
                 ))}
               </div>
             )}
@@ -305,8 +551,8 @@ export default function MagazineHome({ feed }: { feed: FeedData }) {
             <h4 className={styles.featureBoxTitle}>
               {risks[0] ? `Lead ${verdictLabel(risks[0].verdict)} Signal` : "Lead Risk Signal"}
             </h4>
-            <p className={styles.featureBoxText}>
-              {risks[0] ? trimHeadline(risks[0].query, 178) : `No high-risk items found in the last 30 days.`}
+            <p className={`${styles.featureBoxText} ${translateToEnglish ? styles.translatedBlock : ""}`}>
+              {risks[0] ? queryText(risks[0].query, 178) : `No high-risk items found in the last 30 days.`}
             </p>
           </div>
         </article>
@@ -346,11 +592,11 @@ export default function MagazineHome({ feed }: { feed: FeedData }) {
         </article>
       )}
 
-      {/* Page 7: Distribution Desk */}
+      {/* Page 7: Multilingual Access */}
       {page === 7 && (
         <article className={styles.panel}>
           <header>
-            <p className={styles.sectionTag}>Distribution Desk</p>
+            <p className={styles.sectionTag}>Multilingual Access</p>
             <h3 className={styles.panelTitle}>
               {mediaMix.length > 0 ? `${mediaMix.length} Media Type${mediaMix.length !== 1 ? "s" : ""}` : "No Media"} · {languageMix.length > 0 ? `${languageMix.length} Language${languageMix.length !== 1 ? "s" : ""}` : "No Language"}
             </h3>
@@ -363,7 +609,7 @@ export default function MagazineHome({ feed }: { feed: FeedData }) {
               ) : (
                 mediaMix.map((row) => (
                   <div key={`m-${row.label}`} className={styles.ledgerRow}>
-                    <span className={styles.ledgerName}>{row.label}</span>
+                    <span className={styles.ledgerName}>{plainText(row.label)}</span>
                     <span className={styles.ledgerCount}>{row.count}</span>
                   </div>
                 ))
@@ -376,7 +622,7 @@ export default function MagazineHome({ feed }: { feed: FeedData }) {
               ) : (
                 languageMix.map((row) => (
                   <div key={`l-${row.label}`} className={styles.ledgerRow}>
-                    <span className={styles.ledgerName}>{row.label}</span>
+                    <span className={styles.ledgerName}>{plainText(row.label)}</span>
                     <span className={styles.ledgerCount}>{row.count}</span>
                   </div>
                 ))
@@ -389,8 +635,8 @@ export default function MagazineHome({ feed }: { feed: FeedData }) {
         </article>
       )}
 
-      {/* Page 8: Editorial Notebook */}
-      {page === 8 && (
+      {/* Page 8: Editorial Notebook (retired) */}
+      {page === 88 && (
         <article className={styles.panel}>
           <header>
             <p className={styles.sectionTag}>Editorial Notebook</p>
@@ -410,13 +656,20 @@ export default function MagazineHome({ feed }: { feed: FeedData }) {
               <h4 className={styles.featureBoxTitle}>
                 {lead ? `${verdictLabel(lead.verdict)} — Narrative in Focus` : "Narrative in Focus"}
               </h4>
-              <p className={styles.featureBoxText}>
-                {lead ? trimHeadline(lead.query, 188) : `No lead record available in the last 30 days.`}
+              <p className={`${styles.featureBoxText} ${translateToEnglish ? styles.translatedBlock : ""}`}>
+                {lead ? queryText(lead.query, 188) : `No lead record available in the last 30 days.`}
               </p>
             </div>
             <div className={styles.feedList}>
               {riskBoard.slice(0, 3).map((item, index) => (
-                <FeedItem key={`editor-risk-${index}`} item={item} risk crop={130} />
+                <FeedItem
+                  key={`editor-risk-${index}`}
+                  item={item}
+                  risk
+                  crop={130}
+                  translated={translateToEnglish}
+                  text={queryText(item.query, 130)}
+                />
               ))}
             </div>
           </div>
@@ -426,8 +679,8 @@ export default function MagazineHome({ feed }: { feed: FeedData }) {
         </article>
       )}
 
-      {/* Page 9: Publishing Board */}
-      {page === 9 && (
+      {/* Page 9: Publishing Board (retired) */}
+      {page === 89 && (
         <article className={styles.panel}>
           <header>
             <p className={styles.sectionTag}>Publishing Board</p>
@@ -456,13 +709,169 @@ export default function MagazineHome({ feed }: { feed: FeedData }) {
           </div>
         </article>
       )}
+
+      {/* Page 10: Frequent Questions (retired) */}
+      {page === 90 && (
+        <article className={styles.panel}>
+          <header>
+            <p className={styles.sectionTag}>Top FAQ</p>
+            <h3 className={styles.panelTitle}>Most Frequent Questions & Answers</h3>
+          </header>
+          <div className={styles.scrollBlock}>
+            {frequentQuestions.length === 0 ? (
+              <p className={styles.panelSubtitle}>No repeated questions captured yet.</p>
+            ) : (
+              <div className={styles.feedList}>
+                {frequentQuestions.map((item, index) => (
+                  <FaqItem
+                    key={`faq-${index}`}
+                    item={item}
+                    question={queryText(item.question, 148)}
+                    answer={queryText(item.answer, 220)}
+                    translated={translateToEnglish}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+          <p className={styles.panelNote}>
+            Frequent questions are computed from recent query logs and sorted by repeat count.
+          </p>
+        </article>
+      )}
+
+      {/* Page 9: Web Fact Feed */}
+      {page === 9 && (
+        <article className={styles.panel}>
+          <header>
+            <p className={styles.sectionTag}>Web Fact Feed</p>
+            <h3 className={styles.panelTitle}>Most Recent Fake-News Fact Checks</h3>
+          </header>
+          <div className={styles.scrollBlock}>
+            {fakeFacts.length === 0 ? (
+              <p className={styles.panelSubtitle}>
+                No scraped fake-news facts found. Run the scraper script in `scripts/` to populate this feed.
+              </p>
+            ) : (
+              <div className={styles.factList}>
+                {fakeFacts.slice(0, 10).map((fact, idx) => (
+                  <article key={`fact-${idx}`} className={styles.factItem}>
+                    <p className={styles.factSource}>{plainText(fact.source)}{fact.published_at ? ` · ${fact.published_at.slice(0, 10)}` : ""}</p>
+                    <a href={fact.url} target="_blank" rel="noreferrer" className={styles.factTitle}>
+                      {plainText(fact.title)}
+                    </a>
+                    <p className={styles.factSummary}>{plainText(fact.summary)}</p>
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
+          <p className={styles.panelNote}>
+            This list is loaded from `data/fake_news_facts.json` generated by a scraper script.
+          </p>
+        </article>
+      )}
+
+      {/* Page 10: Community Signals */}
+      {page === 10 && (
+        <article className={styles.panel}>
+          <header>
+            <p className={styles.sectionTag}>Community Signals</p>
+            <h3 className={styles.panelTitle}>Trust for Multilingual Communities (Proxy Metrics)</h3>
+          </header>
+          <div className={styles.scrollBlock}>
+            <div className={styles.feedList}>
+              <article className={styles.faqItem}>
+                <h4 className={styles.featureBoxTitle}>1) Credibility Detection Quality</h4>
+                <p className={styles.faqAnswer}>Risk share: <strong>{dangerRate}%</strong> · Verdict coverage: <strong>{verdictCoverage}%</strong></p>
+              </article>
+              <article className={styles.faqItem}>
+                <h4 className={styles.featureBoxTitle}>2) Multilingual Coverage & Fairness</h4>
+                <p className={styles.faqAnswer}>Unique languages: <strong>{uniqueLanguages}</strong> · Non-English share: <strong>{nonEnglishShare}%</strong></p>
+              </article>
+              <article className={styles.faqItem}>
+                <h4 className={styles.featureBoxTitle}>3) Context & Explainability</h4>
+                <p className={styles.faqAnswer}>Frequent Q&A pairs available: <strong>{frequentQuestions.length}</strong> · Web fact sources loaded: <strong>{fakeFacts.length}</strong></p>
+              </article>
+              <article className={styles.faqItem}>
+                <h4 className={styles.featureBoxTitle}>4) Community Trust & Actionability</h4>
+                <p className={styles.faqAnswer}>Repeat enquiry rate (proxy): <strong>{repeatRate}%</strong> · Latest records: <strong>{recent.length}</strong></p>
+              </article>
+              <article className={styles.faqItem}>
+                <h4 className={styles.featureBoxTitle}>5) Operational Reliability</h4>
+                <p className={styles.faqAnswer}>P95 response time (proxy): <strong>{Math.round(p95Response)} ms</strong> · Data update: <strong>{issueStamp}</strong></p>
+              </article>
+              <article className={styles.faqItem}>
+                <h4 className={styles.featureBoxTitle}>6) Safety & Uncertainty Handling</h4>
+                <p className={styles.faqAnswer}>Unverified rate: <strong>{uncertaintyRate}%</strong> · High-risk items: <strong>{risks.length}</strong></p>
+              </article>
+            </div>
+          </div>
+          <p className={styles.panelNote}>
+            Risk rate definition: (false + misleading) / total enquiries in the selected window. These are proxy indicators from current schema.
+          </p>
+        </article>
+      )}
+
+      {/* Page 8: Word Cloud */}
+      {page === 8 && (
+        <article className={styles.panel}>
+          <header>
+            <p className={styles.sectionTag}>Word Cloud</p>
+            <h3 className={styles.panelTitle}>Word Cloud</h3>
+          </header>
+          <div className={styles.scrollBlock}>
+            <div className={styles.wordCloudFrame}>
+              {activeWord ? (
+                <div className={styles.wordTooltip}>
+                  <strong>{plainText(activeWord.word)}</strong> appears <strong>{activeWord.count}</strong> times
+                </div>
+              ) : (
+                <div className={styles.wordTooltipHint}>Click a word to see its frequency.</div>
+              )}
+              <div className={styles.wordCloudCanvas}>
+                {cloudWords.map((item, index) => (
+                  <button
+                    type="button"
+                    key={`wm-${item.word}`}
+                    className={`${styles.wordChip} ${styles.wordPlaced} ${styles[`wordTone${(index % 6) + 1}`]}`}
+                    style={{
+                      fontSize: `${item.size}rem`,
+                      left: `${item.x}%`,
+                      top: `${item.y}%`,
+                      transform: `translate(-50%, -50%) rotate(${item.rotate}deg)`,
+                    }}
+                    onClick={() => setActiveWord(item)}
+                  >
+                    {plainText(item.word)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <p className={styles.panelNote}>
+            Keywords are extracted from cleaned enquiries; click any word to see how many times it appears.
+          </p>
+        </article>
+      )}
     </>
   );
 
   return (
     <section className={`${styles.magazineFrame} ${styles.paperTexture}`}>
       <header className={styles.masthead}>
-        <h1 className={styles.title}>Scam Watch Weekly</h1>
+        <div className={styles.topControls}>
+          <h1 className={styles.title}>Scam Watch Weekly</h1>
+          <button
+            type="button"
+            onClick={onToggleTranslate}
+            disabled={translationLoading}
+            className={`${styles.translateButton} ${translateToEnglish ? styles.translateButtonOn : ""}`}
+          >
+            {translationLoading ? "Translating..." : translateToEnglish ? "Show Original" : "Translate to English"}
+          </button>
+        </div>
+        {translationError ? <p className={styles.translationError}>{translationError}</p> : null}
       </header>
 
       {!feed.connected ? (
@@ -493,7 +902,7 @@ export default function MagazineHome({ feed }: { feed: FeedData }) {
           {"<"}
         </button>
         <span className={styles.pageIndicator}>
-          {String(page + 1).padStart(2, "0")} / 10
+          {String(page + 1).padStart(2, "0")} / {String(totalPages).padStart(2, "0")}
         </span>
         <button
           type="button"
@@ -504,6 +913,33 @@ export default function MagazineHome({ feed }: { feed: FeedData }) {
           {">"}
         </button>
       </footer>
+      <div className={styles.pageMeta}>
+        <span className={styles.metaBadge}>Section: {pageLabels[page] ?? "Magazine"}</span>
+        <div className={styles.jumpRail}>
+          {[
+            { label: "Cover", target: 0 },
+            { label: "Contents", target: 1 },
+            { label: "Enquiries", target: 3 },
+            { label: "Multilingual", target: 7 },
+            { label: "Word Cloud", target: 8 },
+            { label: "Fact Feed", target: 9 },
+            { label: "Trust Signals", target: 10 },
+          ].map((jump) => (
+            <button
+              key={jump.label}
+              type="button"
+              onClick={() => {
+                setDirection(jump.target >= page ? 1 : -1);
+                setPage(jump.target);
+                setFlipKey((k) => k + 1);
+              }}
+              className={styles.jumpButton}
+            >
+              {jump.label}
+            </button>
+          ))}
+        </div>
+      </div>
     </section>
   );
 }

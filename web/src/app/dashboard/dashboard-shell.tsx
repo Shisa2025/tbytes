@@ -28,10 +28,14 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
   const navQuery = paramsForNav.toString();
   const homeHref = navQuery ? `/dashboard?${navQuery}` : "/dashboard";
   const analysisHref = navQuery ? `/dashboard/analysis?${navQuery}` : "/dashboard/analysis";
+  const briefingHref = navQuery ? `/dashboard/briefing?${navQuery}` : "/dashboard/briefing";
+  const factsHref = navQuery ? `/dashboard/facts?${navQuery}` : "/dashboard/facts";
   const databaseHref = navQuery ? `/dashboard/database?${navQuery}` : "/dashboard/database";
 
   const isHome = pathname === "/dashboard";
   const isAnalysis = pathname.startsWith("/dashboard/analysis");
+  const isBriefing = pathname.startsWith("/dashboard/briefing");
+  const isFacts = pathname.startsWith("/dashboard/facts");
   const isDatabase = pathname.startsWith("/dashboard/database");
 
   function onMediaChange(next: string) {
@@ -59,10 +63,16 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
           <div className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#aab4c8]">Navigation</div>
           <div className="space-y-2 text-base">
             <Link href={homeHref} className={navClass(isHome)}>
-              Home
+              Issue Cover
             </Link>
             <Link href={analysisHref} className={navClass(isAnalysis)}>
-              Analytics
+              Data Desk
+            </Link>
+            <Link href={briefingHref} className={navClass(isBriefing)}>
+              Editorial Briefing
+            </Link>
+            <Link href={factsHref} className={navClass(isFacts)}>
+              Web Fact Desk
             </Link>
 
           </div>

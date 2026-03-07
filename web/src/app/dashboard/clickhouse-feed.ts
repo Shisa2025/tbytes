@@ -9,6 +9,46 @@ export type QueryLogItem = {
   verdict: string;
   language?: string;
   media_type?: string;
+  answer?: string;
+  response_time_ms?: number;
+};
+
+export type FrequentQuestionItem = {
+  question: string;
+  count: number;
+  latestVerdict: string;
+  latestLanguage: string;
+  answer: string;
+};
+
+export type FakeNewsFactItem = {
+  title: string;
+  summary: string;
+  url: string;
+  source: string;
+  published_at?: string;
+};
+
+export type PandasSnapshot = {
+  generated_at?: string;
+  total_queries: number;
+  risk_rate: number;
+  daily_counts: Array<{ date: string; count: number }>;
+  verdict_counts: Array<{ label: string; count: number }>;
+  language_counts: Array<{ label: string; count: number }>;
+  media_counts: Array<{ label: string; count: number }>;
+};
+
+export type QueryFamilyItem = {
+  key: string;
+  count: number;
+  representative: string;
+  samples: string[];
+};
+
+export type WordMapItem = {
+  word: string;
+  count: number;
 };
 
 export type FeedData = {
@@ -18,6 +58,11 @@ export type FeedData = {
   recentItems: QueryLogItem[];
   riskItems: QueryLogItem[];
   verdictCounts: Array<{ verdict: string; count: number }>;
+  frequentQuestions: FrequentQuestionItem[];
+  fakeNewsFacts: FakeNewsFactItem[];
+  pandasSnapshot?: PandasSnapshot;
+  queryFamilies: QueryFamilyItem[];
+  wordMap: WordMapItem[];
 };
 
 export function normalizeClickHouseErrorMessage(error: unknown, url: string) {
@@ -137,6 +182,214 @@ function detectLanguage(text: string): string {
   return "";
 }
 
+function normalizeVerdict(value: string): "true" | "false" | "misleading" | "unverified" | "unknown" {
+  const raw = (value || "").trim().toLowerCase();
+  if (!raw) return "unknown";
+
+  if (
+    raw.includes("misleading") ||
+    raw.includes("partly false") ||
+    raw.includes("partially false") ||
+    raw.includes("needs context")
+  ) {
+    return "misleading";
+  }
+  if (
+    raw.startsWith("🔴") ||
+    raw.includes(" false") ||
+    raw === "false" ||
+    raw.includes("scam") ||
+    raw.includes("hoax")
+  ) {
+    return "false";
+  }
+  if (raw.startsWith("🟢") || raw.includes(" true") || raw === "true" || raw.includes("verified true")) {
+    return "true";
+  }
+  if (raw.startsWith("⚪") || raw.includes("unverified")) {
+    return "unverified";
+  }
+  return "unknown";
+}
+
+function loadJsonFromDataDir<T>(fileName: string): T | undefined {
+  const candidates = [
+    path.resolve(process.cwd(), "data", fileName),
+    path.resolve(process.cwd(), "..", "data", fileName),
+  ];
+
+  for (const file of candidates) {
+    if (!fs.existsSync(file)) continue;
+    try {
+      const raw = fs.readFileSync(file, "utf-8");
+      return JSON.parse(raw) as T;
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+function normalizeQuestion(text: string) {
+  const source = (text || "")
+    .normalize("NFKC")
+    .trim()
+    .toLowerCase();
+
+  return source
+    .replace(/[\p{P}\p{S}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function fallbackAnswerFromVerdict(verdict: string) {
+  const v = (verdict || "").toLowerCase();
+  if (v === "false") return "This claim was assessed as false based on trusted fact-checking context.";
+  if (v === "misleading") return "This claim was assessed as misleading and requires additional context.";
+  if (v === "true") return "This claim was assessed as true based on trusted fact-checking context.";
+  return "No stored answer is available for this query yet.";
+}
+
+function buildFrequentQuestions(items: QueryLogItem[], topN = 8): FrequentQuestionItem[] {
+  const grouped = new Map<
+    string,
+    {
+      question: string;
+      count: number;
+      latestTimestamp: number;
+      latestVerdict: string;
+      latestLanguage: string;
+      answer: string;
+    }
+  >();
+
+  for (const item of items) {
+    const question = (item.query || "").trim();
+    if (!question) continue;
+    const key = normalizeQuestion(question);
+    if (!key) continue;
+
+    const ts = Date.parse(item.timestamp || "");
+    const current = grouped.get(key);
+    const answer = (item.answer || "").trim();
+
+    if (!current) {
+      grouped.set(key, {
+        question,
+        count: 1,
+        latestTimestamp: Number.isNaN(ts) ? 0 : ts,
+        latestVerdict: (item.verdict || "unknown").toLowerCase(),
+        latestLanguage: item.language || detectLanguage(question) || "unknown",
+        answer: answer || fallbackAnswerFromVerdict(item.verdict),
+      });
+      continue;
+    }
+
+    current.count += 1;
+    if (!Number.isNaN(ts) && ts >= current.latestTimestamp) {
+      current.latestTimestamp = ts;
+      current.latestVerdict = (item.verdict || "unknown").toLowerCase();
+      current.latestLanguage = item.language || detectLanguage(question) || "unknown";
+      if (answer) current.answer = answer;
+    } else if (!current.answer && answer) {
+      current.answer = answer;
+    }
+  }
+
+  return [...grouped.values()]
+    .sort((a, b) => b.count - a.count || b.latestTimestamp - a.latestTimestamp)
+    .slice(0, topN)
+    .map((row) => ({
+      question: row.question,
+      count: row.count,
+      latestVerdict: row.latestVerdict,
+      latestLanguage: row.latestLanguage,
+      answer: row.answer || fallbackAnswerFromVerdict(row.latestVerdict),
+    }));
+}
+
+function computePandasFallback(recentItems: QueryLogItem[]): PandasSnapshot {
+  const daily = new Map<string, number>();
+  const verdict = new Map<string, number>();
+  const language = new Map<string, number>();
+  const media = new Map<string, number>();
+
+  for (const row of recentItems) {
+    const date = (row.timestamp || "").slice(0, 10) || "Unknown";
+    daily.set(date, (daily.get(date) ?? 0) + 1);
+
+    const v = (row.verdict || "unknown").toLowerCase();
+    verdict.set(v, (verdict.get(v) ?? 0) + 1);
+
+    const l = (row.language || detectLanguage(row.query) || "unknown").toLowerCase();
+    language.set(l, (language.get(l) ?? 0) + 1);
+
+    const m = (row.media_type || "unknown").toLowerCase();
+    media.set(m, (media.get(m) ?? 0) + 1);
+  }
+
+  const total = recentItems.length;
+  const risk = recentItems.filter((x) => x.verdict === "false" || x.verdict === "misleading").length;
+
+  return {
+    generated_at: new Date().toISOString(),
+    total_queries: total,
+    risk_rate: total ? Math.round((risk / total) * 100) : 0,
+    daily_counts: [...daily.entries()]
+      .map(([date, count]) => ({ date, count }))
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(-14),
+    verdict_counts: [...verdict.entries()].map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count),
+    language_counts: [...language.entries()].map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count).slice(0, 6),
+    media_counts: [...media.entries()].map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count).slice(0, 6),
+  };
+}
+
+function buildQueryFamilies(items: QueryLogItem[], topN = 8): QueryFamilyItem[] {
+  const groups = new Map<string, { count: number; representative: string; samples: string[] }>();
+  for (const item of items) {
+    const query = (item.query || "").trim();
+    if (!query) continue;
+    const key = normalizeQuestion(query);
+    if (!key) continue;
+    const current = groups.get(key);
+    if (!current) {
+      groups.set(key, { count: 1, representative: query, samples: [query] });
+      continue;
+    }
+    current.count += 1;
+    if (query.length > current.representative.length) current.representative = query;
+    if (current.samples.length < 3 && !current.samples.includes(query)) current.samples.push(query);
+  }
+  return [...groups.entries()]
+    .map(([key, value]) => ({ key, count: value.count, representative: value.representative, samples: value.samples }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, topN);
+}
+
+function buildWordMap(items: QueryLogItem[], topN = 40): WordMapItem[] {
+  const stop = new Set([
+    "the", "and", "for", "with", "this", "that", "from", "your", "have", "has", "are", "was", "were", "can",
+    "you", "what", "when", "where", "which", "will", "about", "into", "how", "why", "does", "is", "to", "of",
+    "a", "an", "in", "on", "at", "be", "it", "or", "if", "as", "by", "i", "we", "they", "he", "she",
+    "dan", "yang", "untuk", "dengan", "tidak", "adalah", "ini", "itu", "apa", "bila", "boleh", "dalam",
+  ]);
+  const counts = new Map<string, number>();
+  for (const item of items) {
+    const norm = normalizeQuestion(item.query || "");
+    if (!norm) continue;
+    for (const token of norm.split(" ")) {
+      const t = token.trim();
+      if (!t || t.length < 3 || stop.has(t) || /^\d+$/.test(t)) continue;
+      counts.set(t, (counts.get(t) ?? 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .map(([word, count]) => ({ word, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, topN);
+}
+
 export async function loadDashboardFeed(limit = 24): Promise<FeedData> {
   const cfg = resolveClickHouseConfig();
   if (!cfg.url) {
@@ -147,6 +400,10 @@ export async function loadDashboardFeed(limit = 24): Promise<FeedData> {
       recentItems: [],
       riskItems: [],
       verdictCounts: [],
+      frequentQuestions: [],
+      fakeNewsFacts: loadJsonFromDataDir<FakeNewsFactItem[]>("fake_news_facts.json") ?? [],
+      queryFamilies: [],
+      wordMap: [],
     };
   }
 
@@ -177,6 +434,7 @@ export async function loadDashboardFeed(limit = 24): Promise<FeedData> {
     const hasUserId = columns.has("user_id");
     const hasLanguage = columns.has("language");
     const hasMediaType = columns.has("media_type");
+    const hasResponseTime = columns.has("response_time_ms");
 
     if (!hasQuery || !hasVerdict) {
       return {
@@ -186,6 +444,10 @@ export async function loadDashboardFeed(limit = 24): Promise<FeedData> {
         recentItems: [],
         riskItems: [],
         verdictCounts: [],
+        frequentQuestions: [],
+        fakeNewsFacts: loadJsonFromDataDir<FakeNewsFactItem[]>("fake_news_facts.json") ?? [],
+        queryFamilies: [],
+        wordMap: [],
       };
     }
 
@@ -193,6 +455,12 @@ export async function loadDashboardFeed(limit = 24): Promise<FeedData> {
     const selectUserId = hasUserId ? "toString(user_id) AS user_id" : "'' AS user_id";
     const selectLanguage = hasLanguage ? "ifNull(language, '') AS language" : "'' AS language";
     const selectMedia = hasMediaType ? "ifNull(media_type, '') AS media_type" : "'' AS media_type";
+    const selectResponse = hasResponseTime ? "toInt32OrZero(response_time_ms) AS response_time_ms" : "0 AS response_time_ms";
+    const answerColumn =
+      (["answer", "response", "assistant_response", "verdict_text", "result_text"] as const).find((name) =>
+        columns.has(name),
+      ) ?? "";
+    const selectAnswer = answerColumn ? `toString(ifNull(${answerColumn}, '')) AS answer` : "'' AS answer";
     const tsExpr = "parseDateTimeBestEffortOrNull(toString(timestamp))";
     const recentWindow = hasTimestamp ? `WHERE ${tsExpr} >= now() - INTERVAL 30 DAY` : "";
     const recentOrder = hasTimestamp ? `ORDER BY ${tsExpr} DESC` : "";
@@ -208,7 +476,9 @@ export async function loadDashboardFeed(limit = 24): Promise<FeedData> {
           query,
           verdict,
           ${selectLanguage},
-          ${selectMedia}
+          ${selectMedia},
+          ${selectAnswer},
+          ${selectResponse}
         FROM query_logs
         ${recentWindow}
         ${recentOrder}
@@ -219,7 +489,7 @@ export async function loadDashboardFeed(limit = 24): Promise<FeedData> {
     });
     const recentItems = (await recentResult.json<QueryLogItem>()).map((item) => ({
       ...item,
-      verdict: (item.verdict ?? "").toLowerCase(),
+      verdict: normalizeVerdict(item.verdict ?? ""),
       language: item.language || detectLanguage(item.query),
     }));
 
@@ -231,9 +501,17 @@ export async function loadDashboardFeed(limit = 24): Promise<FeedData> {
           query,
           verdict,
           ${selectLanguage},
-          ${selectMedia}
+          ${selectMedia},
+          ${selectAnswer},
+          ${selectResponse}
         FROM query_logs
-        WHERE verdict IN ('false', 'misleading')
+        WHERE (
+          lowerUTF8(toString(verdict)) = 'false'
+          OR lowerUTF8(toString(verdict)) = 'misleading'
+          OR lowerUTF8(toString(verdict)) LIKE '🔴%'
+          OR lowerUTF8(toString(verdict)) LIKE '% false%'
+          OR lowerUTF8(toString(verdict)) LIKE '%misleading%'
+        )
           ${riskWindow}
         ${riskOrder}
         LIMIT 12
@@ -242,7 +520,7 @@ export async function loadDashboardFeed(limit = 24): Promise<FeedData> {
     });
     const riskItems = (await riskResult.json<QueryLogItem>()).map((item) => ({
       ...item,
-      verdict: (item.verdict ?? "").toLowerCase(),
+      verdict: normalizeVerdict(item.verdict ?? ""),
       language: item.language || detectLanguage(item.query),
     }));
 
@@ -264,8 +542,15 @@ export async function loadDashboardFeed(limit = 24): Promise<FeedData> {
       updatedAt: new Date().toISOString(),
       recentItems,
       riskItems,
+      frequentQuestions: buildFrequentQuestions(recentItems, 8),
+      fakeNewsFacts: loadJsonFromDataDir<FakeNewsFactItem[]>("fake_news_facts.json") ?? [],
+      pandasSnapshot:
+        loadJsonFromDataDir<PandasSnapshot>("dashboard_analysis_snapshot.json") ??
+        computePandasFallback(recentItems),
+      queryFamilies: buildQueryFamilies(recentItems, 10),
+      wordMap: buildWordMap(recentItems, 44),
       verdictCounts: verdictCounts.map((item) => ({
-        verdict: (item.verdict ?? "").toLowerCase(),
+        verdict: normalizeVerdict(item.verdict ?? ""),
         count: Number(item.count) || 0,
       })),
     };
@@ -277,6 +562,10 @@ export async function loadDashboardFeed(limit = 24): Promise<FeedData> {
       recentItems: [],
       riskItems: [],
       verdictCounts: [],
+      frequentQuestions: [],
+      fakeNewsFacts: loadJsonFromDataDir<FakeNewsFactItem[]>("fake_news_facts.json") ?? [],
+      queryFamilies: [],
+      wordMap: [],
     };
   } finally {
     await client.close();

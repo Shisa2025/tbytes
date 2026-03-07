@@ -145,7 +145,10 @@ def process_media(file_path: str) -> str:
     ext = path_obj.suffix.lower()
     
     # HYBRID ROUTING DECISION
-    current_engine = "openai" if file_size_mb > THRESHOLD_MB else "local"
+    if ACTIVE_MEDIA_ENGINE == "openai":
+        current_engine = "openai"
+    else:
+        current_engine = "openai" if file_size_mb > THRESHOLD_MB else "local"
     
     try:
         if ext in IMAGE_EXTENSIONS:

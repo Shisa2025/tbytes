@@ -41,6 +41,23 @@ function normalize(text: string) {
   return text.trim().toLowerCase();
 }
 
+function canonicalizeQuery(text: string) {
+  return (text || "")
+    .normalize("NFKC")
+    .trim()
+    .toLowerCase()
+    .replace(/[\p{P}\p{S}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function percentile(values: number[], p: number) {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const idx = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));
+  return sorted[idx];
+}
+
 function HorizontalChart({ title, items, mounted }: { title: string; items: CountItem[]; mounted: boolean }) {
   const rowHeight = 30;
   const chartHeight = Math.max(items.length * rowHeight + 24, 220);
@@ -150,6 +167,19 @@ export default function DashboardClient({ logs, connected, error }: DashboardCli
   const trueCount = filteredLogs.filter((row) => row.verdict === "true").length;
   const falseCount = filteredLogs.filter((row) => row.verdict === "false").length;
   const misleadingCount = filteredLogs.filter((row) => row.verdict === "misleading").length;
+  const unverifiedCount = filteredLogs.filter((row) => row.verdict === "unverified").length;
+  const knownVerdictCount = filteredLogs.filter((row) => ["true", "false", "misleading", "unverified"].includes(row.verdict)).length;
+  const verdictCoverage = totalQueries ? Math.round((knownVerdictCount / totalQueries) * 100) : 0;
+  const nonEnglishCount = filteredLogs.filter((row) => normalize(row.language) !== "english").length;
+  const nonEnglishShare = totalQueries ? Math.round((nonEnglishCount / totalQueries) * 100) : 0;
+  const responseP95 = percentile(
+    filteredLogs.map((row) => Number(row.response_time_ms || 0)).filter((x) => Number.isFinite(x) && x > 0),
+    95,
+  );
+  const normalizedQueries = filteredLogs.map((row) => canonicalizeQuery(row.query)).filter(Boolean);
+  const duplicateCount = normalizedQueries.length - new Set(normalizedQueries).size;
+  const repeatRate = normalizedQueries.length ? Math.round((duplicateCount / normalizedQueries.length) * 100) : 0;
+  const uncertaintyRate = totalQueries ? Math.round((unverifiedCount / totalQueries) * 100) : 0;
 
   if (!connected) {
     return (
@@ -193,6 +223,44 @@ export default function DashboardClient({ logs, connected, error }: DashboardCli
         <div className="rounded-2xl bg-white px-6 py-5 shadow-[0_1px_6px_rgba(0,0,0,0.08)]">
           <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[#9aa3b4]">Misleading</div>
           <div className="mt-2 text-5xl font-extrabold leading-none text-[#1a2744]">{misleadingCount}</div>
+        </div>
+      </section>
+
+      <section className="rounded-2xl bg-white p-4 shadow-[0_1px_6px_rgba(0,0,0,0.08)]">
+        <h3 className="mb-2 text-[22px] font-semibold text-[#1a2744] lg:text-[17px]">
+          Trusted Information Analytics (Proxy)
+        </h3>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <div className="rounded-xl border border-[#e5ebf5] bg-[#f8fbff] p-3 text-sm text-[#32435f]">
+            <div className="font-semibold">1) Credibility Detection Quality</div>
+            <div className="mt-1">Risk share: <strong>{Math.round(((falseCount + misleadingCount) / Math.max(totalQueries, 1)) * 100)}%</strong></div>
+            <div>Verdict coverage: <strong>{verdictCoverage}%</strong></div>
+          </div>
+          <div className="rounded-xl border border-[#e5ebf5] bg-[#f8fbff] p-3 text-sm text-[#32435f]">
+            <div className="font-semibold">2) Multilingual Coverage & Fairness</div>
+            <div className="mt-1">Language buckets: <strong>{languageCounts.length}</strong></div>
+            <div>Non-English share: <strong>{nonEnglishShare}%</strong></div>
+          </div>
+          <div className="rounded-xl border border-[#e5ebf5] bg-[#f8fbff] p-3 text-sm text-[#32435f]">
+            <div className="font-semibold">3) Context & Explainability</div>
+            <div className="mt-1">Media coverage: <strong>{mediaCounts.length}</strong> types</div>
+            <div>Daily continuity: <strong>{dailyCounts.length}</strong> days tracked</div>
+          </div>
+          <div className="rounded-xl border border-[#e5ebf5] bg-[#f8fbff] p-3 text-sm text-[#32435f]">
+            <div className="font-semibold">4) Community Trust & Actionability</div>
+            <div className="mt-1">Repeat enquiry rate: <strong>{repeatRate}%</strong></div>
+            <div>Total enquiries: <strong>{totalQueries}</strong></div>
+          </div>
+          <div className="rounded-xl border border-[#e5ebf5] bg-[#f8fbff] p-3 text-sm text-[#32435f]">
+            <div className="font-semibold">5) Operational Reliability</div>
+            <div className="mt-1">P95 response time: <strong>{Math.round(responseP95)} ms</strong></div>
+            <div>Rows with latency: <strong>{filteredLogs.filter((x) => x.response_time_ms > 0).length}</strong></div>
+          </div>
+          <div className="rounded-xl border border-[#e5ebf5] bg-[#f8fbff] p-3 text-sm text-[#32435f]">
+            <div className="font-semibold">6) Safety & Uncertainty Handling</div>
+            <div className="mt-1">Unverified share: <strong>{uncertaintyRate}%</strong></div>
+            <div>False + misleading: <strong>{falseCount + misleadingCount}</strong></div>
+          </div>
         </div>
       </section>
 
