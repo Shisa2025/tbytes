@@ -282,37 +282,33 @@ export default function MagazineHome({ feed }: { feed: FeedData }) {
               <p className={styles.sectionTag}>Distribution Desk</p>
               <h3 className={styles.panelTitle}>Topic and Language Mix</h3>
             </header>
-            <div className={styles.dualColumn}>
-              <section className={styles.miniPanel}>
-                <p className={styles.sectionTag}>Media Type</p>
-                <div className={styles.ledger}>
-                  {mediaMix.length === 0 ? (
-                    <p className={styles.panelSubtitle}>No media data available.</p>
-                  ) : (
-                    mediaMix.map((row) => (
-                      <div key={`m-${row.label}`} className={styles.ledgerRow}>
-                        <span className={styles.ledgerName}>{row.label}</span>
-                        <span className={styles.ledgerCount}>{row.count}</span>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </section>
-              <section className={styles.miniPanel}>
-                <p className={styles.sectionTag}>Language</p>
-                <div className={styles.ledger}>
-                  {languageMix.length === 0 ? (
-                    <p className={styles.panelSubtitle}>No language data available.</p>
-                  ) : (
-                    languageMix.map((row) => (
-                      <div key={`l-${row.label}`} className={styles.ledgerRow}>
-                        <span className={styles.ledgerName}>{row.label}</span>
-                        <span className={styles.ledgerCount}>{row.count}</span>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </section>
+            <div className={styles.scrollBlock}>
+              <p className={styles.sectionTag} style={{ marginBottom: "0.45rem" }}>Media Type</p>
+              <div className={styles.ledger} style={{ marginBottom: "0.9rem" }}>
+                {mediaMix.length === 0 ? (
+                  <p className={styles.panelSubtitle}>No media data available.</p>
+                ) : (
+                  mediaMix.map((row) => (
+                    <div key={`m-${row.label}`} className={styles.ledgerRow}>
+                      <span className={styles.ledgerName}>{row.label}</span>
+                      <span className={styles.ledgerCount}>{row.count}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+              <p className={styles.sectionTag} style={{ marginBottom: "0.45rem" }}>Language</p>
+              <div className={styles.ledger}>
+                {languageMix.length === 0 ? (
+                  <p className={styles.panelSubtitle}>No language data available.</p>
+                ) : (
+                  languageMix.map((row) => (
+                    <div key={`l-${row.label}`} className={styles.ledgerRow}>
+                      <span className={styles.ledgerName}>{row.label}</span>
+                      <span className={styles.ledgerCount}>{row.count}</span>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
             <p className={styles.panelNote}>Use this spread to decide which narratives to localize or prioritize.</p>
           </article>
@@ -391,10 +387,6 @@ export default function MagazineHome({ feed }: { feed: FeedData }) {
           <span className={styles.issueText}>Issue updated: {issueStamp}</span>
         </div>
         <h1 className={styles.title}>Scam Watch Weekly</h1>
-        <p className={styles.subtitle}>
-          Magazine-style intelligence spread generated from your recent ClickHouse activity, optimized for visual reading
-          and fast editorial decisions.
-        </p>
       </header>
 
       {!feed.connected ? (

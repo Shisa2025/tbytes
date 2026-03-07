@@ -1,7 +1,15 @@
 import DashboardClient from "./dashboard-client";
 import { loadQueryLogs } from "./query-logs";
 
+export const dynamic = "force-dynamic";
+
 export default async function Home() {
-  const logs = await loadQueryLogs();
-  return <DashboardClient logs={logs} />;
+  const result = await loadQueryLogs();
+  return (
+    <DashboardClient
+      logs={result.rows}
+      connected={result.connected}
+      error={result.error}
+    />
+  );
 }

@@ -42,10 +42,13 @@ function normalize(text: string) {
 }
 
 function HorizontalChart({ title, items, mounted }: { title: string; items: CountItem[]; mounted: boolean }) {
+  const rowHeight = 30;
+  const chartHeight = Math.max(items.length * rowHeight + 24, 220);
+
   return (
     <section className="rounded-2xl bg-white p-4 shadow-[0_1px_6px_rgba(0,0,0,0.08)]">
       <h3 className="mb-2 text-[24px] font-semibold text-[#1a2744] lg:text-[18px]">{title}</h3>
-      <div style={{ width: "100%", height: Math.max(items.length * 40, 220) }}>
+      <div style={{ width: "100%", height: chartHeight }}>
         {mounted ? (
           <ResponsiveContainer>
             <BarChart data={items} layout="vertical" margin={{ top: 4, right: 20, left: 0, bottom: 6 }}>
@@ -60,7 +63,7 @@ function HorizontalChart({ title, items, mounted }: { title: string; items: Coun
                 tickLine={false}
               />
               <Tooltip cursor={{ fill: "rgba(58,111,216,0.08)" }} />
-              <Bar dataKey="count" radius={[0, 7, 7, 0]}>
+              <Bar dataKey="count" radius={[0, 7, 7, 0]} barSize={12} maxBarSize={12}>
                 {items.map((_, index) => (
                   <Cell key={`${title}-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
@@ -75,7 +78,13 @@ function HorizontalChart({ title, items, mounted }: { title: string; items: Coun
   );
 }
 
-export default function DashboardClient({ logs }: { logs: QueryLogRow[] }) {
+type DashboardClientProps = {
+  logs: QueryLogRow[];
+  connected: boolean;
+  error?: string;
+};
+
+export default function DashboardClient({ logs, connected, error }: DashboardClientProps) {
   const [mounted, setMounted] = useState(false);
   const searchParams = useSearchParams();
 
@@ -142,12 +151,23 @@ export default function DashboardClient({ logs }: { logs: QueryLogRow[] }) {
   const falseCount = filteredLogs.filter((row) => row.verdict === "false").length;
   const misleadingCount = filteredLogs.filter((row) => row.verdict === "misleading").length;
 
+  if (!connected) {
+    return (
+      <section className="rounded-2xl bg-white p-6 shadow-[0_1px_8px_rgba(0,0,0,0.08)]">
+        <h1 className="mb-3 text-2xl font-bold text-slate-900">TBytes Fact-Check Dashboard</h1>
+        <p className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-rose-800">
+          ClickHouse query failed: {error || "Unknown database error"}
+        </p>
+      </section>
+    );
+  }
+
   if (cleanLogs.length === 0) {
     return (
       <section className="rounded-2xl bg-white p-6 shadow-[0_1px_8px_rgba(0,0,0,0.08)]">
         <h1 className="mb-3 text-2xl font-bold text-slate-900">TBytes Fact-Check Dashboard</h1>
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800">
-          No data yet. `data/query_logs.csv` is empty or missing.
+          No data returned from ClickHouse `query_logs`.
         </p>
       </section>
     );

@@ -20,7 +20,7 @@ export type FeedData = {
   verdictCounts: Array<{ verdict: string; count: number }>;
 };
 
-function normalizeErrorMessage(error: unknown, url: string) {
+export function normalizeClickHouseErrorMessage(error: unknown, url: string) {
   const parts: string[] = [];
 
   if (error instanceof Error) {
@@ -108,7 +108,7 @@ function loadRootEnvFallback(): Record<string, string> {
   return {};
 }
 
-function resolveConfig() {
+export function resolveClickHouseConfig() {
   const fallback = loadRootEnvFallback();
   const host = (process.env.CH_HOST ?? fallback.CH_HOST ?? "").trim();
   const port = (process.env.CH_PORT ?? fallback.CH_PORT ?? "8443").trim();
@@ -125,7 +125,7 @@ function resolveConfig() {
 }
 
 export async function loadDashboardFeed(limit = 24): Promise<FeedData> {
-  const cfg = resolveConfig();
+  const cfg = resolveClickHouseConfig();
   if (!cfg.url) {
     return {
       connected: false,
@@ -258,7 +258,7 @@ export async function loadDashboardFeed(limit = 24): Promise<FeedData> {
     return {
       connected: false,
       updatedAt: new Date().toISOString(),
-      error: normalizeErrorMessage(error, cfg.url),
+      error: normalizeClickHouseErrorMessage(error, cfg.url),
       recentItems: [],
       riskItems: [],
       verdictCounts: [],
