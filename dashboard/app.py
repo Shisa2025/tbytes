@@ -100,7 +100,7 @@ st.subheader("Daily Query Volume")
 if "timestamp" in df.columns:
     df["date"] = pd.to_datetime(df["timestamp"], errors="coerce").dt.date.astype(str)
     daily = df.groupby("date").size().reset_index(name="Count")
-    st.altair_chart(hbar(daily, "Count", "date", height=220), use_container_width=True)
+    st.altair_chart(hbar(daily, "Count", "date"), use_container_width=True)
 else:
     st.info("No timestamp data.")
 
