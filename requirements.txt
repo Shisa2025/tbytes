@@ -1,8 +1,12 @@
+# ClickHouse Driver
+clickhouse-connect
+
 # Backend & API
 fastapi
 uvicorn
 python-dotenv
 python-telegram-bot
+httpx
 
 # AI & RAG Orchestration
 langchain
