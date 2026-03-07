@@ -24,10 +24,6 @@ def search_trusted_context(user_query: str, limit: int = 3):
     Performs a Vector Search in ClickHouse using Cosine Distance.
     """
     try:
-        client = clickhouse_connect.get_client(
-            host=CH_HOST, port=CH_PORT, username=CH_USER, password=CH_PASSWORD, secure=True
-        )
-        
         query_vector = model.encode(user_query).tolist()
 
         result = client.query(f"""

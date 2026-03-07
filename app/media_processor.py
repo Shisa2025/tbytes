@@ -34,66 +34,66 @@ IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"}
 AUDIO_EXTENSIONS = {".mp3", ".wav", ".ogg", ".m4a", ".flac"}
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
 
+# --- HELPER FUNCTIONS ---
+def _ocr_local(file_path: str) -> str:
+    logger.info("Running Local Tesseract OCR...")
+    import pytesseract
+    from PIL import Image
+    img = Image.open(file_path)
+    return pytesseract.image_to_string(img).strip()
+
+def _ocr_openai(file_path: str) -> str:
+    logger.info("Running OpenAI Vision (High Quality)...")
+    with open(file_path, "rb") as image_file:
+        base64_image = base64.b64encode(image_file.read()).decode('utf-8')
+    response = openai_client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": [
+            {"type": "text", "text": "Extract all text exactly. Reply 'NO_TEXT' if none."},
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+        ]}],
+        timeout=15
+    )
+    res = response.choices[0].message.content.strip()
+    return res if res != "NO_TEXT" else ""
+
+def _transcribe_local(file_path: str) -> str:
+    logger.info("Running Local Whisper (with Multilingual Prompt)...")
+    result = WHISPER_MODEL.transcribe(
+        file_path, 
+        initial_prompt="The following is a news claim or report in Singapore."
+    )
+    return result["text"].strip()
+
+def _transcribe_openai(file_path: str) -> str:
+    logger.info("Running OpenAI Cloud Whisper...")
+    with open(file_path, "rb") as audio_file:
+        transcription = openai_client.audio.transcriptions.create(
+            model="whisper-1", 
+            file=audio_file,
+            timeout=30
+        )
+    return transcription.text.strip()
+
+# --- MAIN PROCESSORS ---
 def extract_text_from_image(file_path: str) -> str:
     """Toggles between Local Tesseract and OpenAI Vision."""
-    def run_local():
-        logger.info("Running Local Tesseract OCR...")
-        import pytesseract
-        from PIL import Image
-        img = Image.open(file_path)
-        return pytesseract.image_to_string(img).strip()
-
-    def run_openai():
-        logger.info("Running OpenAI Vision (High Quality)...")
-        with open(file_path, "rb") as image_file:
-            base64_image = base64.b64encode(image_file.read()).decode('utf-8')
-        response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": [
-                {"type": "text", "text": "Extract all text exactly. Reply 'NO_TEXT' if none."},
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
-            ]}],
-            timeout=15
-        )
-        res = response.choices[0].message.content.strip()
-        return res if res != "NO_TEXT" else ""
-
     if ACTIVE_MEDIA_ENGINE == "local":
-        try: return run_local()
-        except Exception: return run_openai()
+        try: return _ocr_local(file_path)
+        except Exception: return _ocr_openai(file_path)
     else:
-        try: return run_openai()
-        except Exception: return run_local()
+        try: return _ocr_openai(file_path)
+        except Exception: return _ocr_local(file_path)
 
 def extract_text_from_audio_video(file_path: str, engine: str = None) -> str:
     """Uses Local or OpenAI based on routing decision."""
     engine = engine or ACTIVE_MEDIA_ENGINE
 
-    def run_local():
-        logger.info("Running Local Whisper (with Multilingual Prompt)...")
-        # FIX: The initial prompt helps Whisper stay in the correct language 'lane'
-        # This reduces the likelihood of the 'Malay Flip' for English audio.
-        result = WHISPER_MODEL.transcribe(
-            file_path, 
-            initial_prompt="This is a news claim or report in Singapore. Content may be in English, Malay, or Mandarin."
-        )
-        return result["text"].strip()
-
-    def run_openai():
-        logger.info("Running OpenAI Cloud Whisper...")
-        with open(file_path, "rb") as audio_file:
-            transcription = openai_client.audio.transcriptions.create(
-                model="whisper-1", 
-                file=audio_file,
-                timeout=30
-            )
-        return transcription.text.strip()
-
     if engine == "local":
-        try: return run_local()
-        except Exception: return run_openai()
+        try: return _transcribe_local(file_path)
+        except Exception: return _transcribe_openai(file_path)
     else:
-        return run_openai()
+        return _transcribe_openai(file_path)
 
 def extract_text_from_video_frames(file_path: str, interval_sec: float = 3.0) -> str:
     """Samples frames and performs OCR on each."""

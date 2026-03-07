@@ -22,6 +22,12 @@ def summarize_long_claim(text: str) -> str:
     response = chain.invoke({"text": text})
     return response.content.strip()
 
+def _get_llm(engine: str):
+    """Factory to get the active LLM."""
+    if engine == "groq":
+        return ChatGroq(model_name="llama-3.3-70b-versatile", temperature=0)
+    return ChatOpenAI(model="gpt-4o-mini", temperature=0)
+
 def verify_claim(user_query: str) -> str:
     if len(user_query) > 500:
         user_query = summarize_long_claim(user_query)
@@ -58,18 +64,13 @@ def verify_claim(user_query: str) -> str:
         ("human", "TRUSTED_CONTEXT:\n{context}\n\n<user_claim>\n{user_query}\n</user_claim>")
     ])
 
-    def run_groq():
-        llm = ChatGroq(model_name="llama-3.3-70b-versatile", temperature=0)
-        return (prompt | llm).invoke({"context": context, "user_query": user_query}).content
-
-    def run_openai():
-        llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
-        return (prompt | llm).invoke({"context": context, "user_query": user_query}).content
-
     try:
-        if ACTIVE_ENGINE == "groq":
-            return run_groq()
-        else:
-            return run_openai()
+        llm = _get_llm(ACTIVE_ENGINE)
+        chain = prompt | llm
+        return chain.invoke({"context": context, "user_query": user_query}).content
     except Exception:
-        return run_openai() if ACTIVE_ENGINE == "groq" else run_groq()
+        # Fallback to the other engine
+        fallback_engine = "openai" if ACTIVE_ENGINE == "groq" else "groq"
+        llm = _get_llm(fallback_engine)
+        chain = prompt | llm
+        return chain.invoke({"context": context, "user_query": user_query}).content

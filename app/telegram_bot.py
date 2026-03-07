@@ -21,65 +21,60 @@ DEBUG_MODE=True
 # Ensure a temporary folder exists for downloads
 os.makedirs("temp_media", exist_ok=True)
 
+async def _extract_content_from_message(message: dict, chat_id: int) -> str:
+    """Helper to extract text or process media from a Telegram message."""
+    # 1. TEXT
+    if "text" in message:
+        return message["text"]
+
+    # 2. PHOTOS
+    if "photo" in message:
+        photo_obj = message["photo"][-1]
+        file_path = await download_telegram_file(photo_obj["file_id"], "image.jpg")
+        return process_media(file_path)
+
+    # 3. VOICE / AUDIO
+    if "voice" in message or "audio" in message:
+        media_key = "voice" if "voice" in message else "audio"
+        ext = "ogg" if media_key == "voice" else "mp3"
+        file_path = await download_telegram_file(message[media_key]["file_id"], f"audio.{ext}")
+        return process_media(file_path)
+
+    # 4. VIDEOS
+    file_id = None
+    if "video" in message:
+        file_id = message["video"]["file_id"]
+    elif "video_note" in message:
+        file_id = message["video_note"]["file_id"]
+    elif "document" in message and "video" in message["document"].get("mime_type", ""):
+        file_id = message["document"]["file_id"]
+
+    if file_id:
+        if DEBUG_MODE:
+            await send_message(chat_id, "📹 Video detected! Breaking it down on the RTX 5050...")
+        file_path = await download_telegram_file(file_id, "video.mp4")
+        return process_media(file_path)
+
+    return ""
+
 async def handle_telegram_webhook(data: dict):
     if "message" not in data: 
         return
     
     message = data["message"]
     chat_id = message["chat"]["id"]
-    user_text = ""
-    MAX_BYTES = 20 * 1024 * 1024 
 
-    # --- 1. TEXT ---
-    if "text" in message:
-        user_text = message["text"]
+    try:
+        user_text = await _extract_content_from_message(message, chat_id)
+    except Exception as e:
+        logger.error(f"Media Processing Error: {e}")
+        await send_message(chat_id, "⚠️ Error processing your message.")
+        return
 
-    # --- 2. PHOTOS ---
-    elif "photo" in message:
-        photo_obj = message["photo"][-1]
-        file_id = photo_obj["file_id"]
-        file_path = await download_telegram_file(file_id, "image.jpg")
-        user_text = process_media(file_path)
-
-    # --- 3. VOICE / AUDIO ---
-    elif "voice" in message or "audio" in message:
-        media_key = "voice" if "voice" in message else "audio"
-        file_id = message[media_key]["file_id"]
-        ext = "ogg" if media_key == "voice" else "mp3"
-        file_path = await download_telegram_file(file_id, f"audio.{ext}")
-        user_text = process_media(file_path)
-
-    # --- 4. VIDEOS (The Fix is here) ---
-    elif "video" in message or "video_note" in message or "document" in message:
-        file_id = None
-        
-        # Check if it's a standard video
-        if "video" in message:
-            file_id = message["video"]["file_id"]
-        # Check if it's a "round" video message
-        elif "video_note" in message:
-            file_id = message["video_note"]["file_id"]
-        # Check if it's a file that happens to be a video (the 8MB catch)
-        elif "document" in message:
-            mime = message["document"].get("mime_type", "")
-            if "video" in mime:
-                file_id = message["document"]["file_id"]
-
-        if file_id:
-            if DEBUG_MODE:
-                await send_message(chat_id, "📹 Video detected! Breaking it down on the RTX 5050...")
-            
-            file_path = await download_telegram_file(file_id, "video.mp4")
-            try:
-                user_text = process_media(file_path)
-            except Exception as e:
-                logger.error(f"Video Processing Error: {e}")
-                await send_message(chat_id, "⚠️ Blackwell GPU error during video analysis.")
-                return
-        else:
-            # If it's a document but NOT a video (like a PDF), ignore it
-            await send_message(chat_id, "Sorry, I can only process text, images, voice notes, and videos.")
-            return
+    if not user_text and "text" not in message:
+        # If we couldn't extract text and it wasn't a text message, it's likely an unsupported format
+        await send_message(chat_id, "Sorry, I can only process text, images, voice notes, and videos.")
+        return
 
     # --- 5. FINAL VERIFICATION ---
     if user_text:
