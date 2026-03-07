@@ -19,7 +19,14 @@ logging.basicConfig(
 
 @app.get("/")
 def health_check():
-    return {"status": "OmniSource is Live", "gpu": "RTX 5050 Ready"}
+    return {
+        "status": "OmniSource is Live", 
+        "gpu": "RTX 5050 Ready",
+        "active_modes": {
+            "rag_engine": rag_pipeline.ACTIVE_ENGINE,
+            "media_engine": media_processor.ACTIVE_MEDIA_ENGINE
+        }
+    }
 
 # --- TELEGRAM WEBHOOK ---
 @app.post("/webhook")
@@ -68,6 +75,25 @@ def set_current_media_engine(data: MediaEngineToggle):
         print(f"DASHBOARD OVERRIDE: Media engine is now {data.engine.upper()}")
         return {"status": "success", "active_media_engine": media_processor.ACTIVE_MEDIA_ENGINE}
     return {"status": "error", "message": "Invalid engine. Must be 'local' or 'openai'"}
+
+# --- GLOBAL MODE ENDPOINT ---
+class GlobalMode(BaseModel):
+    mode: str # "openai_only" or "hybrid"
+
+@app.post("/api/global_mode")
+def set_global_mode(data: GlobalMode):
+    """Dashboard button calls this to enforce OpenAI Only or revert to Hybrid."""
+    if data.mode == "openai_only":
+        rag_pipeline.ACTIVE_ENGINE = "openai"
+        media_processor.ACTIVE_MEDIA_ENGINE = "openai"
+        print("DASHBOARD OVERRIDE: System set to OpenAI ONLY Mode")
+        return {"status": "success", "mode": "openai_only"}
+    elif data.mode == "hybrid":
+        rag_pipeline.ACTIVE_ENGINE = "groq"
+        media_processor.ACTIVE_MEDIA_ENGINE = "local"
+        print("DASHBOARD OVERRIDE: System set to HYBRID Mode")
+        return {"status": "success", "mode": "hybrid"}
+    return {"status": "error", "message": "Invalid mode. Use 'openai_only' or 'hybrid'"}
 
 # --- THE ENGINE STARTER ---
 if __name__ == "__main__":

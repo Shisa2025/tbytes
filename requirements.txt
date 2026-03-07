@@ -1,34 +1,50 @@
-# ClickHouse Driver
-clickhouse-connect
+# Unified requirements for backend + dashboard + scripts + GPU runtime.
+#
+# Note on GPU:
+# - `torch` below is required for Whisper GPU execution in `venv_gpu`.
+# - If you want a specific CUDA build, install torch/torchvision/torchaudio
+#   using the official PyTorch index for your CUDA version.
 
-# Backend & API
+# Core backend/API
 fastapi
 uvicorn
+pydantic
 python-dotenv
 python-telegram-bot
 httpx
+requests
+sympy
 
-# AI & RAG Orchestration
+# LLM / RAG
+openai
 langchain
+langchain-core
 langchain-community
+langchain-openai
 langchain-groq
 chromadb
 sentence-transformers
 
-# Data Scraping & Processing
+# Database
+clickhouse-connect
+
+# Data processing / scraping
+pandas
 beautifulsoup4
 lxml
 feedparser
-requests
-pandas
 
-# Media Processing (Extensions)
-pytesseract
+# Media + OCR + GPU
+torch
+torchvision
+torchaudio
 openai-whisper
+pytesseract
+Pillow
 pydub
 opencv-python
 
-# Dashboard (Extensions)
+# Optional Streamlit dashboard (legacy folder)
 streamlit
 langdetect
 pycountry

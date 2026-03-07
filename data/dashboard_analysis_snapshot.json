@@ -1,0 +1,76 @@
+{
+  "generated_at": "2026-03-07T22:33:01.210146+00:00",
+  "total_queries": 170,
+  "risk_rate": 51,
+  "daily_counts": [
+    {
+      "date": "2026-03-01",
+      "count": 20
+    },
+    {
+      "date": "2026-03-02",
+      "count": 20
+    },
+    {
+      "date": "2026-03-03",
+      "count": 20
+    },
+    {
+      "date": "2026-03-04",
+      "count": 20
+    },
+    {
+      "date": "2026-03-05",
+      "count": 19
+    },
+    {
+      "date": "2026-03-06",
+      "count": 70
+    },
+    {
+      "date": "NaT",
+      "count": 1
+    }
+  ],
+  "verdict_counts": [
+    {
+      "label": "true",
+      "count": 82
+    },
+    {
+      "label": "false",
+      "count": 44
+    },
+    {
+      "label": "misleading",
+      "count": 43
+    },
+    {
+      "label": "verdict",
+      "count": 1
+    }
+  ],
+  "language_counts": [],
+  "media_counts": [
+    {
+      "label": "text",
+      "count": 89
+    },
+    {
+      "label": "video",
+      "count": 31
+    },
+    {
+      "label": "image",
+      "count": 28
+    },
+    {
+      "label": "audio",
+      "count": 21
+    },
+    {
+      "label": "media_type",
+      "count": 1
+    }
+  ]
+}
