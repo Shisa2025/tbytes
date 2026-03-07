@@ -1,0 +1,11 @@
+timestamp,user_id,query,verdict,media_type,response_time_ms
+2026-03-01 10:00:00,user_001,"Is this news true?",true,text,320
+2026-03-01 10:05:00,user_002,"CPF withdrawal age raised to 70?",false,text,415
+2026-03-01 10:12:00,user_003,"Check this image",misleading,image,890
+2026-03-02 09:00:00,user_001,"Voice message check",true,audio,1200
+2026-03-02 11:30:00,user_004,"Video fact check",false,video,2100
+2026-03-03 08:45:00,user_005,"Is this real?",misleading,text,380
+2026-03-03 13:00:00,user_002,"Another image",true,image,760
+2026-03-04 09:15:00,user_006,"WhatsApp forward",false,text,290
+2026-03-04 14:00:00,user_003,"Video clip",misleading,video,1800
+2026-03-05 10:00:00,user_007,"Audio message",true,audio,1100
