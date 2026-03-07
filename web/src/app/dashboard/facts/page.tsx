@@ -8,9 +8,8 @@ export default async function FactsPage() {
   return (
     <section className="space-y-4">
       <header>
-        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#71839f]">Fact Feed</p>
-        <h1 className="text-3xl font-bold text-[#1a2744]">Recent Fake-News Facts from Web Sources</h1>
-        <p className="text-sm text-[#5f6f87]">Source file: `data/fake_news_facts.json` from scraper in `scripts/`.</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#71839f]">Trending Topics</p>
+        <h1 className="text-3xl font-bold text-[#1a2744]">Misinformation Topics Trending Right Now</h1>
       </header>
 
       <div className="grid gap-3">
@@ -25,10 +24,15 @@ export default async function FactsPage() {
                 {fact.source}
                 {fact.published_at ? ` · ${fact.published_at.slice(0, 10)}` : ""}
               </p>
-              <a href={fact.url} target="_blank" rel="noreferrer" className="mt-1 block text-lg font-bold text-[#1b3b76]">
-                {fact.title}
-              </a>
               <p className="mt-1 text-sm text-[#50617d]">{fact.summary}</p>
+              <a
+                href={fact.url}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-2 inline-flex rounded-lg border border-[#c9d7ef] bg-[#f3f8ff] px-3 py-1.5 text-xs font-semibold text-[#1b3b76] underline"
+              >
+                Open topic link
+              </a>
             </article>
           ))
         )}
