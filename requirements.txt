@@ -1,0 +1,25 @@
+# Backend & API
+fastapi
+uvicorn
+python-dotenv
+python-telegram-bot
+
+# AI & RAG Orchestration
+langchain
+langchain-community
+langchain-groq
+chromadb
+sentence-transformers
+
+# Data Scraping & Processing
+beautifulsoup4
+requests
+pandas
+
+# Media Processing (Extensions)
+pytesseract
+openai-whisper
+pydub
+
+# Dashboard (Extensions)
+streamlit
