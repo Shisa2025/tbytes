@@ -1,0 +1,1 @@
+# Handles Images and Videos, checks for AI related content as well (EXTENSION)
