@@ -20,25 +20,6 @@ client = clickhouse_connect.get_client(
 )
 
 def search_trusted_context(user_query: str, limit: int = 3):
-
-    query_vector = model.encode(user_query).tolist()
-
-    result = client.query(
-        f"""
-        SELECT source, title, url, content,
-               cosineDistance(embedding, %(query_vector)s) AS score
-        FROM {TABLE_NAME}
-        ORDER BY score ASC
-        LIMIT {limit}
-        """,
-        parameters={"query_vector": query_vector},
-    )
-
-    return result.result_rows
-
-
-
-def search_trusted_context(user_query: str, limit: int = 3):
     """
     Performs a Vector Search in ClickHouse using Cosine Distance.
     """
