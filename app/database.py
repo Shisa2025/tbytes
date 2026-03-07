@@ -1,1 +1,1 @@
-# Connects to ChromaDB to search for context
+# Connects to ClickHouse to search for context

@@ -1,1 +1,34 @@
-{ "The text scraped from trusted websites": "" }
+[
+  {
+    "id": "moh_dengue_1",
+    "title": "MOH advisory on dengue situation",
+    "url": "https://www.moh.gov.sg/example-dengue",
+    "source": "moh.gov.sg",
+    "category": "health",
+    "content": "The Ministry of Health advises the public to take precautions against dengue. There is no nationwide lockdown or emergency restriction related to dengue."
+  },
+  {
+    "id": "sfa_recall_1",
+    "title": "SFA food safety alert on imported products",
+    "url": "https://www.sfa.gov.sg/example-food-alert",
+    "source": "sfa.gov.sg",
+    "category": "food_safety",
+    "content": "The Singapore Food Agency issues food safety alerts when a specific product is recalled. Consumers should refer to official SFA announcements for confirmed recalls."
+  },
+  {
+    "id": "spf_scam_1",
+    "title": "Police advisory on phishing and WhatsApp scams",
+    "url": "https://www.police.gov.sg/example-scam-alert",
+    "source": "police.gov.sg",
+    "category": "crime",
+    "content": "The Singapore Police Force advises the public to verify suspicious messages and avoid clicking unknown links. Scam warnings are published through official advisories."
+  },
+  {
+    "id": "gov_factually_1",
+    "title": "Gov.sg guidance on misinformation",
+    "url": "https://www.gov.sg/example-factually",
+    "source": "gov.sg",
+    "category": "misinformation",
+    "content": "Members of the public should rely on official government channels for accurate updates, especially during uncertainty."
+  }
+]

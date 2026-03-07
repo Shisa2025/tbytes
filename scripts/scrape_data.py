@@ -1,1 +1,1 @@
-# Grabs data from .gov.sg or news sites
+# To collect data from trusted sites like .gov.sg 
