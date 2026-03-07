@@ -5,81 +5,91 @@ from sympy import false
 from .config import TELEGRAM_TOKEN
 from .rag_pipeline import verify_claim
 from .logger import log_query
+import logging
+from .media_processor import process_media
+
+# This creates the 'logger' variable the rest of your code is looking for
+logger = logging.getLogger(__name__)
 # Assuming Coder 3 has a function like this ready:
 # from .media_processor import process_media 
 
 TELE_API_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 FILE_API_URL = f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}"
 
-DEBUG=True
+DEBUG_MODE=True
 
 # Ensure a temporary folder exists for downloads
 os.makedirs("temp_media", exist_ok=True)
 
 async def handle_telegram_webhook(data: dict):
-    """
-    Retrieve the telegram webhook, process it and send message to user
-
-    Args:
-        data (dict): telegram data
-    """
     if "message" not in data: 
         return
     
     message = data["message"]
     chat_id = message["chat"]["id"]
     user_text = ""
-    MAX_BYTES = 20 * 1024 * 1024 #20MB limit
+    MAX_BYTES = 20 * 1024 * 1024 
 
-    # 1. Handle standard text messages
+    # --- 1. TEXT ---
     if "text" in message:
         user_text = message["text"]
 
-    # 2. Handle Images (Telegram sends photos as an array of sizes, grab the largest)
+    # --- 2. PHOTOS ---
     elif "photo" in message:
-        photo_obj = message["photo"][-1] # Get the highest resolution version
-        # Check if photo file size is of acceptable size, inform user otherwise
-        if photo_obj.get("file_size", 0) > MAX_BYTES:
-            await send_message(chat_id, "📸 That image is too large! Please send something under 20MB.")
-            return
-        
-        # Retrieve file ID of photo image for download and processing
+        photo_obj = message["photo"][-1]
         file_id = photo_obj["file_id"]
         file_path = await download_telegram_file(file_id, "image.jpg")
-        # TO BE REPLACED WITH CODER 3's media output
-        user_text = f"Simulated OCR extraction for {file_path}"
+        user_text = process_media(file_path)
 
-    # 3. Handle Voice Notes
-    elif "voice" in message:
-        # Get the voice object
-        voice_obj = message["voice"]
-        # Check the voice message file size, inform user if voice note is too big
-        if voice_obj.get("file_size", 0) > MAX_BYTES:
-            await send_message(chat_id, "🎤 That voice note is too long! Please keep it under 20MB.")
-            return
+    # --- 3. VOICE / AUDIO ---
+    elif "voice" in message or "audio" in message:
+        media_key = "voice" if "voice" in message else "audio"
+        file_id = message[media_key]["file_id"]
+        ext = "ogg" if media_key == "voice" else "mp3"
+        file_path = await download_telegram_file(file_id, f"audio.{ext}")
+        user_text = process_media(file_path)
+
+    # --- 4. VIDEOS (The Fix is here) ---
+    elif "video" in message or "video_note" in message or "document" in message:
+        file_id = None
         
-        #Retrieve file ID for download and processing
-        file_id = voice_obj["file_id"]
-        file_path = await download_telegram_file(file_id, "audio.ogg")
-        # TO BE REPLACED WITH CODER 3's media output
-        user_text = f"Simulated Whisper transcription for {file_path}"
+        # Check if it's a standard video
+        if "video" in message:
+            file_id = message["video"]["file_id"]
+        # Check if it's a "round" video message
+        elif "video_note" in message:
+            file_id = message["video_note"]["file_id"]
+        # Check if it's a file that happens to be a video (the 8MB catch)
+        elif "document" in message:
+            mime = message["document"].get("mime_type", "")
+            if "video" in mime:
+                file_id = message["document"]["file_id"]
 
-    # If we successfully got text (either directly or via extraction)
-    if user_text:
-        if not DEBUG:
-            verdict_text = verify_claim(user_text)
-            log_query("Unknown", user_text, verdict_text)
-            await send_message(chat_id, verdict_text)
+        if file_id:
+            if DEBUG_MODE:
+                await send_message(chat_id, "📹 Video detected! Breaking it down on the RTX 5050...")
+            
+            file_path = await download_telegram_file(file_id, "video.mp4")
+            try:
+                user_text = process_media(file_path)
+            except Exception as e:
+                logger.error(f"Video Processing Error: {e}")
+                await send_message(chat_id, "⚠️ Blackwell GPU error during video analysis.")
+                return
         else:
-            # -- DEBUG MODE to test bot --
-            print(f"✅ SUCCESSFULLY RETRIEVED: {user_text}")
-            # Send a dummy reply to prove the bot can talk back
-            mock_verdict = f"Received your data! Length: {len(user_text)} characters."
-            await send_message(chat_id, mock_verdict)
-    #Inform user that the bot cannot process the file that was sent
-    else:
-        await send_message(chat_id, "Sorry, I can only process text, images, and voice notes.")
+            # If it's a document but NOT a video (like a PDF), ignore it
+            await send_message(chat_id, "Sorry, I can only process text, images, voice notes, and videos.")
+            return
 
+    # --- 5. FINAL VERIFICATION ---
+    if user_text:
+        if DEBUG_MODE:
+            print(f"SUCCESSFULLY RETRIEVED: {user_text}")
+        
+        verdict_text = verify_claim(user_text)
+        await send_message(chat_id, verdict_text)
+        
+        
 async def download_telegram_file(file_id: str, extension: str) -> str:
     """
     Downloads a file from Telegram's servers to the local temp_media folder.

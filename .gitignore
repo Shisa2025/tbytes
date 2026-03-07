@@ -2,4 +2,5 @@
 /data/query_logs.csv
 /data/raw_sources.json
 /venv
+/venv_gpu
 __pycache__
