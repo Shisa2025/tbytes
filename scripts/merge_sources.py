@@ -1,3 +1,4 @@
+# was using this to merge the initial scraped moh and sfa data to get raw_sources.json under data
 import json
 from pathlib import Path
 
