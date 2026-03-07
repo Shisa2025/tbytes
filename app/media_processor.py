@@ -6,6 +6,14 @@ import logging
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+try:
+    import whisper
+    logger.info("Loading Whisper model into memory... (This takes a moment)")
+    # Cache the model globally
+    WHISPER_MODEL = whisper.load_model("base") 
+except ImportError:
+    WHISPER_MODEL = None
+    logger.warning("whisper not installed. Run: pip install openai-whisper")
 
 TEMP_MEDIA_DIR = Path(__file__).parent.parent / "temp_media"
 TEMP_MEDIA_DIR.mkdir(exist_ok=True)
@@ -33,16 +41,13 @@ def extract_text_from_image(file_path: str) -> str:
 
 
 def extract_text_from_audio_video(file_path: str) -> str:
-    """Use OpenAI Whisper to transcribe audio or video file."""
+    """Use globally loaded OpenAI Whisper to transcribe audio or video file."""
+    if not WHISPER_MODEL:
+        raise ImportError("Whisper model is not loaded.")
+        
     try:
-        import whisper
-
-        model = whisper.load_model("base")
-        result = model.transcribe(file_path)
+        result = WHISPER_MODEL.transcribe(file_path)
         return result["text"].strip()
-    except ImportError:
-        logger.error("whisper not installed. Run: pip install openai-whisper")
-        raise
     except Exception as e:
         logger.error(f"Error transcribing audio/video: {e}")
         raise
@@ -169,13 +174,18 @@ def delete_temp_file(file_path: str):
         pass
 
 
-def process_media(file_bytes: bytes, filename: str) -> str:
+def process_media(file_path: str) -> str:
     """
-    Main entry point. Accepts raw file bytes and filename.
+    Main entry point. Accepts a saved file path from Coder 1.
     Returns extracted/transcribed text, then deletes the temp file.
     """
-    file_path = save_temp_file(file_bytes, filename)
-    ext = Path(filename).suffix.lower()
+    path_obj = Path(file_path)
+    if not path_obj.exists():
+        logger.error(f"File not found: {file_path}")
+        return ""
+        
+    ext = path_obj.suffix.lower()
+    filename = path_obj.name
 
     try:
         if ext in IMAGE_EXTENSIONS:
@@ -190,13 +200,12 @@ def process_media(file_bytes: bytes, filename: str) -> str:
         else:
             raise ValueError(f"Unsupported file type: {ext}")
     finally:
+        # Clean up the file Coder 1 downloaded so your hard drive doesn't fill up
         delete_temp_file(file_path)
 
     if not text:
-        logger.warning(f"No text extracted from {filename}")
         return ""
 
-    logger.info(f"Extracted {len(text)} characters from {filename}")
     return text
 
 

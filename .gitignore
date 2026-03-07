@@ -1,5 +1,4 @@
 .env
-/data/chroma_db
 /data/query_logs.csv
 /data/raw_sources.json
 /venv
