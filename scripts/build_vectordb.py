@@ -15,10 +15,11 @@ def build_database():
     # 3. Create the table with a Vector column
     client.command(f"""
         CREATE TABLE IF NOT EXISTS {CH_DATABASE}.trusted_info (
-            id UInt64,
-            text String,
-            source_url String,
-            embedding Array(Float32)
+            source String,
+            url String,
+            published_date String,
+            category String,
+            content String
         ) ENGINE = MergeTree() ORDER BY id
     """)
 
