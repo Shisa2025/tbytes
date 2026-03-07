@@ -1,44 +1,38 @@
 import json
-import uuid
 import clickhouse_connect
 from sentence_transformers import SentenceTransformer
+from app.config import CH_HOST, CH_PORT, CH_USER, CH_PASSWORD, CH_DATABASE
 
-# connect to ClickHouse
-client = clickhouse_connect.get_client(
-    host="localhost",
-    port=8123,
-    database="default"
-)
+def build_database():
+    # 1. Load your embedding model (Multilingual for Singlish/Malay/etc.)
+    model = SentenceTransformer('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')
+    
+    # 2. Connect to ClickHouse Cloud
+    client = clickhouse_connect.get_client(
+        host=CH_HOST, port=CH_PORT, username=CH_USER, password=CH_PASSWORD, secure=True
+    )
 
-# embedding model
-model = SentenceTransformer("intfloat/multilingual-e5-base")
+    # 3. Create the table with a Vector column
+    client.command(f"""
+        CREATE TABLE IF NOT EXISTS {CH_DATABASE}.trusted_info (
+            id UInt64,
+            text String,
+            source_url String,
+            embedding Array(Float32)
+        ) ENGINE = MergeTree() ORDER BY id
+    """)
 
-def chunk_text(text, size=700):
-    return [text[i:i+size] for i in range(0, len(text), size)]
+    # 4. Process and Insert Data
+    with open('data/raw_sources.json', 'r') as f:
+        raw_data = json.load(f)
 
-# load scraped data
-with open("data/raw_sources.json") as f:
-    docs = json.load(f)
+    data_to_insert = []
+    for i, item in enumerate(raw_data):
+        vector = model.encode(item['text']).tolist()
+        data_to_insert.append((i, item['text'], item['url'], vector))
 
-rows = []
+    client.insert('trusted_info', data_to_insert, column_names=['id', 'text', 'source_url', 'embedding'])
+    print(f"Successfully indexed {len(data_to_insert)} documents to ClickHouse Cloud.")
 
-for doc in docs:
-    for chunk in chunk_text(doc["content"]):
-        emb = model.encode(chunk).tolist()
-
-        rows.append([
-            str(uuid.uuid4()),
-            doc["source"],
-            doc["title"],
-            doc["url"],
-            chunk,
-            emb
-        ])
-
-client.insert(
-    "trusted_sources",
-    rows,
-    column_names=["id","source","title","url","content","embedding"]
-)
-
-print("Data inserted successfully")
+if __name__ == "__main__":
+    build_database()

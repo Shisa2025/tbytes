@@ -2,6 +2,7 @@
 import httpx
 from .config import TELEGRAM_TOKEN
 from .rag_pipeline import verify_claim
+from .logger import log_query   # Coder 4's data source
 
 # Telegram API URL
 TELE_API_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"

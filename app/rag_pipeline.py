@@ -1,33 +1,29 @@
-# The LangChain logic (Embeddings + LLM + Prompts)
 import os
 from langchain_groq import ChatGroq
-from langchain.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 from .database import search_trusted_context
 
 def verify_claim(user_query: str) -> str:
-    """
-    The 'Handshake' function: Takes a string and returns the AI's verdict[cite: 165, 166].
-    """
-    # 1. Retrieve trusted facts from ChromaDB [cite: 133, 151]
+    # 1. Get facts from ClickHouse
     context = search_trusted_context(user_query)
     
-    # 2. Setup the LLM (using Groq for high speed) [cite: 74, 138]
-    llm = ChatGroq(temperature=0, model_name="llama3-70b-8192", api_key=os.getenv("GROQ_API_KEY"))
-    
-    # 3. Create the strict system prompt to prevent hallucinations [cite: 195, 199]
-    system_prompt = (
-        "You are Trusteefy, a strict fact-checking assistant. "
-        "Base your answer SOLELY on the provided <TRUSTED_CONTEXT>. "
-        "If you cannot find the answer, say you cannot verify it[cite: 54, 200]."
-    )
-    
+    if not context.strip():
+        return "I cannot verify this information with my current trusted sources." # Failsafe
+
+    # 2. Setup LLM
+    llm = ChatGroq(model_name="llama3-70b-8192", temperature=0)
+
+    # 3. Use the strict System Prompt from the Spec
     prompt = ChatPromptTemplate.from_messages([
-        ("system", system_prompt),
-        ("human", "Context: {context}\n\nClaim: {query}")
+        ("system", """You are TybtesBot, a strict fact-checking assistant.
+        Your ONLY job is to compare the USER_MESSAGE against the TRUSTED_CONTEXT.
+        Base your answer SOLELY on the TRUSTED_CONTEXT.
+        If the context doesn't have the answer, say you cannot verify it."""),
+        ("human", f"TRUSTED_CONTEXT:\n{context}\n\nUSER_MESSAGE:\n{user_query}")
     ])
-    
-    # 4. Generate and return the localized response [cite: 145, 153]
+
+    # 4. Generate Response
     chain = prompt | llm
-    response = chain.invoke({"context": context, "query": user_query})
+    response = chain.invoke({"context": context, "user_query": user_query})
     
     return response.content
