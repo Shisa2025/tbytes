@@ -24,6 +24,9 @@ pandas
 pytesseract
 openai-whisper
 pydub
+opencv-python
 
 # Dashboard (Extensions)
 streamlit
+langdetect
+pycountry

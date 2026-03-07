@@ -2,10 +2,170 @@ timestamp,user_id,query,verdict,media_type,response_time_ms
 2026-03-01 10:00:00,user_001,"Is this news true?",true,text,320
 2026-03-01 10:05:00,user_002,"CPF withdrawal age raised to 70?",false,text,415
 2026-03-01 10:12:00,user_003,"Check this image",misleading,image,890
+2026-03-01 10:20:00,user_004,"这个消息是真的吗？",true,text,410
+2026-03-01 10:25:00,user_005,"Ini berita betul?",false,text,390
+2026-03-01 10:32:00,user_006,"このニュースは本当ですか？",true,text,420
+2026-03-01 10:40:00,user_007,"Check this WhatsApp forward",misleading,text,365
+2026-03-01 10:50:00,user_008,"是真的吗 CPF 政策改变？",false,text,480
+2026-03-01 11:00:00,user_009,"Is dengue outbreak real?",true,text,300
+2026-03-01 11:10:00,user_010,"Semak gambar ini",misleading,image,900
+2026-03-01 11:20:00,user_001,"Check this voice note",true,audio,1200
+2026-03-01 11:30:00,user_002,"この画像を確認してください",misleading,image,850
+2026-03-01 11:40:00,user_003,"是真的吗这个视频",false,video,2100
+2026-03-01 11:50:00,user_004,"Video fact check",false,video,1800
+2026-03-01 12:00:00,user_005,"Is this a scam?",true,text,310
+2026-03-01 12:10:00,user_006,"这个WhatsApp转发是真的吗",misleading,text,420
+2026-03-01 12:20:00,user_007,"Semak mesej ini",true,text,370
+2026-03-01 12:30:00,user_008,"政府取消CPF是真的吗",false,text,450
+2026-03-01 12:40:00,user_009,"Check video clip",misleading,video,1750
+2026-03-01 12:50:00,user_010,"これは詐欺ですか？",true,text,400
 2026-03-02 09:00:00,user_001,"Voice message check",true,audio,1200
-2026-03-02 11:30:00,user_004,"Video fact check",false,video,2100
+2026-03-02 09:10:00,user_002,"Is this announcement real?",true,text,330
+2026-03-02 09:20:00,user_003,"检查这个图片",misleading,image,910
+2026-03-02 09:30:00,user_004,"Semak video ini",false,video,2050
+2026-03-02 09:40:00,user_005,"このメッセージは本当？",true,text,350
+2026-03-02 09:50:00,user_006,"Is this health alert real?",true,text,295
+2026-03-02 10:00:00,user_007,"政府发布的新政策是真的吗",false,text,480
+2026-03-02 10:10:00,user_008,"Scam alert check",true,text,305
+2026-03-02 10:20:00,user_009,"Semak imej ini",misleading,image,890
+2026-03-02 10:30:00,user_010,"Check this forwarded message",misleading,text,410
+2026-03-02 10:40:00,user_001,"这是谣言吗",false,text,460
+2026-03-02 10:50:00,user_002,"Video verification",true,video,1650
+2026-03-02 11:00:00,user_003,"Check this news link",true,text,330
+2026-03-02 11:10:00,user_004,"Semak mesej WhatsApp",misleading,text,370
+2026-03-02 11:20:00,user_005,"このビデオは本物？",false,video,2000
+2026-03-02 11:30:00,user_006,"Video fact check",false,video,2100
+2026-03-02 11:40:00,user_007,"Check this image please",true,image,700
+2026-03-02 11:50:00,user_008,"这个图片是真的吗",misleading,image,860
+2026-03-02 12:00:00,user_009,"Semak berita ini",true,text,340
+2026-03-02 12:10:00,user_010,"これは本当のニュース？",true,text,355
 2026-03-03 08:45:00,user_005,"Is this real?",misleading,text,380
-2026-03-03 13:00:00,user_002,"Another image",true,image,760
+2026-03-03 08:55:00,user_006,"这个消息是真的吗",false,text,420
+2026-03-03 09:05:00,user_007,"Check audio clip",true,audio,1150
+2026-03-03 09:15:00,user_008,"Semak klip video",misleading,video,1780
+2026-03-03 09:25:00,user_009,"この画像は本当？",true,image,710
+2026-03-03 09:35:00,user_010,"Check government announcement",true,text,300
+2026-03-03 09:45:00,user_001,"真的假的这个新闻",false,text,450
+2026-03-03 09:55:00,user_002,"Semak berita palsu",misleading,text,390
+2026-03-03 10:05:00,user_003,"Verify this video",true,video,1700
+2026-03-03 10:15:00,user_004,"この音声は本物？",true,audio,1300
+2026-03-03 10:25:00,user_005,"Check forwarded message",misleading,text,365
+2026-03-03 10:35:00,user_006,"这个图片是假的吗",false,image,830
+2026-03-03 10:45:00,user_007,"Semak imej WhatsApp",misleading,image,910
+2026-03-03 10:55:00,user_008,"Is this fake news?",true,text,305
+2026-03-03 11:05:00,user_009,"このニュースを確認",true,text,340
+2026-03-03 11:15:00,user_010,"Check video rumor",misleading,video,1900
+2026-03-03 11:25:00,user_001,"政府公告是真的吗",true,text,310
+2026-03-03 11:35:00,user_002,"Semak berita ini",false,text,360
+2026-03-03 11:45:00,user_003,"Verify image rumor",misleading,image,880
+2026-03-03 11:55:00,user_004,"これは詐欺？",true,text,395
 2026-03-04 09:15:00,user_006,"WhatsApp forward",false,text,290
-2026-03-04 14:00:00,user_003,"Video clip",misleading,video,1800
+2026-03-04 09:25:00,user_007,"这个视频是真的吗",misleading,video,1850
+2026-03-04 09:35:00,user_008,"Semak klip ini",true,video,1650
+2026-03-04 09:45:00,user_009,"この画像をチェック",true,image,740
+2026-03-04 09:55:00,user_010,"Check scam message",true,text,320
+2026-03-04 10:05:00,user_001,"这个消息是假的吗",false,text,410
+2026-03-04 10:15:00,user_002,"Semak mesej palsu",misleading,text,395
+2026-03-04 10:25:00,user_003,"Verify video claim",true,video,1720
+2026-03-04 10:35:00,user_004,"このビデオは本物？",false,video,2050
+2026-03-04 10:45:00,user_005,"Check image rumor",misleading,image,870
+2026-03-04 10:55:00,user_006,"是真的吗这个政府公告",true,text,310
+2026-03-04 11:05:00,user_007,"Semak berita kerajaan",true,text,335
+2026-03-04 11:15:00,user_008,"Is this policy real?",true,text,295
+2026-03-04 11:25:00,user_009,"このニュースは本当？",true,text,330
+2026-03-04 11:35:00,user_010,"Check forwarded video",misleading,video,1800
+2026-03-04 11:45:00,user_001,"Verify this image",true,image,720
+2026-03-04 11:55:00,user_002,"这个图片是真的吗",false,image,840
+2026-03-04 12:05:00,user_003,"Semak imej ini",misleading,image,900
+2026-03-04 12:15:00,user_004,"Check this audio",true,audio,1180
+2026-03-04 12:25:00,user_005,"この音声は本当？",true,audio,1250
 2026-03-05 10:00:00,user_007,"Audio message",true,audio,1100
+2026-03-05 10:10:00,user_008,"这个语音是真的吗",misleading,audio,1320
+2026-03-05 10:20:00,user_009,"Semak mesej suara",true,audio,1200
+2026-03-05 10:30:00,user_010,"Check this news article",true,text,310
+2026-03-05 10:40:00,user_001,"这个新闻是假的吗",false,text,420
+2026-03-05 10:50:00,user_002,"Semak berita palsu",misleading,text,385
+2026-03-05 11:00:00,user_003,"Verify video rumor",true,video,1700
+2026-03-05 11:10:00,user_004,"このニュースを確認",true,text,340
+2026-03-05 11:20:00,user_005,"Check government claim",true,text,300
+2026-03-05 11:30:00,user_006,"这个政策是真的吗",false,text,450
+2026-03-05 11:40:00,user_007,"Semak berita ini",true,text,360
+2026-03-05 11:50:00,user_008,"Check video clip rumor",misleading,video,1880
+2026-03-05 12:00:00,user_009,"Verify image rumor",true,image,720
+2026-03-05 12:10:00,user_010,"この画像は本物？",true,image,740
+2026-03-05 12:20:00,user_001,"Check scam message",true,text,310
+2026-03-05 12:30:00,user_002,"这个WhatsApp消息是真的吗",false,text,430
+2026-03-05 12:40:00,user_003,"Semak mesej ini",misleading,text,390
+2026-03-05 12:50:00,user_004,"Verify news claim",true,text,305
+2026-03-05 13:00:00,user_005,"Check rumor video",misleading,video,1750
+timestamp,user_id,query,verdict,media_type,response_time_ms
+2026-03-06 09:00:00,user_011,"¿Esta noticia es verdadera?",true,text,340
+2026-03-06 09:02:00,user_012,"¿Es esto una estafa?",false,text,410
+2026-03-06 09:04:00,user_013,"Verifica esta imagen",misleading,image,890
+2026-03-06 09:06:00,user_014,"¿Este video es real?",misleading,video,1800
+2026-03-06 09:08:00,user_015,"Message vocal vérifier",true,audio,1200
+2026-03-06 09:10:00,user_016,"Cette information est-elle vraie ?",true,text,320
+2026-03-06 09:12:00,user_017,"Vérifie cette image",misleading,image,870
+2026-03-06 09:14:00,user_018,"Est-ce une fausse nouvelle ?",false,text,400
+2026-03-06 09:16:00,user_019,"Ist diese Nachricht wahr?",true,text,310
+2026-03-06 09:18:00,user_020,"Überprüfe dieses Bild",misleading,image,920
+2026-03-06 09:20:00,user_011,"Ist dieses Video echt?",false,video,1700
+2026-03-06 09:22:00,user_012,"Diese Nachricht prüfen",true,text,330
+2026-03-06 09:24:00,user_013,"क्या यह खबर सच है?",true,text,360
+2026-03-06 09:26:00,user_014,"यह वीडियो असली है?",misleading,video,1850
+2026-03-06 09:28:00,user_015,"इस तस्वीर को जांचें",misleading,image,890
+2026-03-06 09:30:00,user_016,"क्या यह अफवाह है?",false,text,420
+2026-03-06 09:32:00,user_017,"هل هذا الخبر صحيح؟",true,text,340
+2026-03-06 09:34:00,user_018,"تحقق من هذه الصورة",misleading,image,900
+2026-03-06 09:36:00,user_019,"هل هذا الفيديو حقيقي؟",false,video,1950
+2026-03-06 09:38:00,user_020,"تحقق من هذه الرسالة",true,text,370
+2026-03-06 09:40:00,user_011,"이 뉴스는 사실인가요?",true,text,310
+2026-03-06 09:42:00,user_012,"이 이미지를 확인하세요",misleading,image,880
+2026-03-06 09:44:00,user_013,"이 비디오는 진짜인가요?",false,video,1900
+2026-03-06 09:46:00,user_014,"이 음성 메시지를 확인하세요",true,audio,1250
+2026-03-06 09:48:00,user_015,"ข่าวนี้จริงหรือ?",true,text,350
+2026-03-06 09:50:00,user_016,"ตรวจสอบภาพนี้",misleading,image,900
+2026-03-06 09:52:00,user_017,"วิดีโอนี้จริงหรือ?",false,video,1800
+2026-03-06 09:54:00,user_018,"ตรวจสอบข้อความนี้",true,text,330
+2026-03-06 09:56:00,user_019,"Apakah berita ini benar?",true,text,320
+2026-03-06 09:58:00,user_020,"Periksa gambar ini",misleading,image,890
+2026-03-06 10:00:00,user_011,"Apakah video ini asli?",false,video,1750
+2026-03-06 10:02:00,user_012,"Periksa pesan ini",true,text,340
+2026-03-06 10:04:00,user_013,"Tin này có thật không?",true,text,360
+2026-03-06 10:06:00,user_014,"Kiểm tra hình ảnh này",misleading,image,900
+2026-03-06 10:08:00,user_015,"Video này có thật không?",false,video,1820
+2026-03-06 10:10:00,user_016,"Kiểm tra tin nhắn này",true,text,350
+2026-03-06 10:12:00,user_017,"Это настоящая новость?",true,text,330
+2026-03-06 10:14:00,user_018,"Проверь это изображение",misleading,image,910
+2026-03-06 10:16:00,user_019,"Это настоящее видео?",false,video,2000
+2026-03-06 10:18:00,user_020,"Проверь это сообщение",true,text,360
+2026-03-06 10:20:00,user_011,"¿Es real este video?",false,video,1700
+2026-03-06 10:22:00,user_012,"Vérifier cette vidéo",misleading,video,1850
+2026-03-06 10:24:00,user_013,"Überprüfe diese Nachricht",true,text,320
+2026-03-06 10:26:00,user_014,"यह संदेश सही है?",true,text,350
+2026-03-06 10:28:00,user_015,"تحقق من هذا الفيديو",misleading,video,1900
+2026-03-06 10:30:00,user_016,"이 메시지는 진짜인가요?",true,text,330
+2026-03-06 10:32:00,user_017,"ตรวจสอบข่าวนี้",false,text,400
+2026-03-06 10:34:00,user_018,"Periksa berita ini",true,text,310
+2026-03-06 10:36:00,user_019,"Kiểm tra video này",misleading,video,1780
+2026-03-06 10:38:00,user_020,"Проверь эту новость",true,text,340
+2026-03-06 10:40:00,user_011,"¿Este mensaje es falso?",false,text,420
+2026-03-06 10:42:00,user_012,"Ce message est-il faux ?",false,text,410
+2026-03-06 10:44:00,user_013,"Ist diese Nachricht falsch?",false,text,395
+2026-03-06 10:46:00,user_014,"क्या यह झूठी खबर है?",false,text,450
+2026-03-06 10:48:00,user_015,"هل هذه إشاعة؟",false,text,430
+2026-03-06 10:50:00,user_016,"이 뉴스는 가짜인가요?",false,text,380
+2026-03-06 10:52:00,user_017,"ข่าวปลอมใช่ไหม?",false,text,410
+2026-03-06 10:54:00,user_018,"Apakah ini berita palsu?",false,text,360
+2026-03-06 10:56:00,user_019,"Đây có phải tin giả không?",false,text,390
+2026-03-06 10:58:00,user_020,"Это фейковая новость?",false,text,405
+2026-03-06 11:00:00,user_011,"Check this audio message",true,audio,1200
+2026-03-06 11:02:00,user_012,"Verifica este audio",true,audio,1250
+2026-03-06 11:04:00,user_013,"Vérifier cet audio",true,audio,1300
+2026-03-06 11:06:00,user_014,"Überprüfe diese Audioaufnahme",true,audio,1280
+2026-03-06 11:08:00,user_015,"इस ऑडियो को जांचें",true,audio,1350
+2026-03-06 11:10:00,user_016,"تحقق من هذا الصوت",true,audio,1380
+2026-03-06 11:12:00,user_017,"이 음성을 확인하세요",true,audio,1220
+2026-03-06 11:14:00,user_018,"ตรวจสอบเสียงนี้",true,audio,1200
+2026-03-06 11:16:00,user_019,"Periksa pesan suara ini",true,audio,1190
+2026-03-06 11:18:00,user_020,"Kiểm tra tin nhắn thoại",true,audio,1210

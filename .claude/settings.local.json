@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(venv/Scripts/pip install langdetect -q)",
+      "Bash(venv/Scripts/pip install pycountry -q)",
+      "Bash(venv/Scripts/python.exe app/media_processor.py --gui)",
+      "Bash(venv/Scripts/python.exe -c \"import whisper; print\\(''whisper installed''\\)\")"
+    ]
+  }
+}
