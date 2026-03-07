@@ -1,12 +1,15 @@
 """
 MOH Newsroom Scraper
-Scrapes latest 20 entries from MOH newsroom articles
+Scrapes up to 100 MOH newsroom articles and saves them in the format:
+"source", "source_type", "title", "url", "published_date", "category", "content"
 """
 
 import json
 import logging
 import re
 import time
+from collections import OrderedDict
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import urljoin
 
@@ -14,9 +17,9 @@ import requests
 from bs4 import BeautifulSoup
 
 BASE = "https://www.moh.gov.sg"
-LIST_URL = (
+LIST_URL_TMPL = (
     "https://www.moh.gov.sg/newsroom/"
-    "?filters=%5B%7B%22id%22%3A%22year%22%2C%22items%22%3A%5B%7B%22id%22%3A%222026%22%7D%5D%7D%5D&page=1"
+    "?filters=%5B%5D&page={page}"
 )
 
 HEADERS = {
@@ -28,8 +31,9 @@ HEADERS = {
     "Accept-Language": "en-US,en;q=0.9",
 }
 
-OUTPUT_FILE = Path("data/moh_newsroom_2026.json")
-MAX_ARTICLES = 50
+OUTPUT_FILE = Path("data/moh_newsroom.json")
+MAX_ARTICLES = 100
+MAX_PAGES = 25
 TIMEOUT = 30
 SLEEP = 1.0
 
@@ -46,8 +50,12 @@ MONTHS = [
 ]
 
 DATE_RE = re.compile(
-    r"\b(?:" + "|".join(MONTHS) + r")\s+\d{1,2},?\s+\d{4}\b"
-    r"|\b\d{1,2}\s+(?:" + "|".join(MONTHS) + r")\s+\d{4}\b",
+    r"\b(?:"
+    + "|".join(MONTHS)
+    + r")\s+\d{1,2},?\s+\d{4}\b"
+    + r"|\b\d{1,2}\s+(?:"
+    + "|".join(MONTHS)
+    + r")\s+\d{4}\b",
     re.IGNORECASE,
 )
 
@@ -56,40 +64,53 @@ def clean(text: str) -> str:
     return re.sub(r"\s+", " ", text or "").strip()
 
 
+def format_date_ddmmyy(date_str: str) -> str:
+    """
+    Convert dates like:
+    - '6 March 2026'
+    - 'March 6, 2026'
+    into dd-mm-yy format, e.g. 06-03-26
+    """
+    if not date_str:
+        return ""
+
+    text = clean(date_str).replace(",", "")
+
+    for fmt in ("%d %B %Y", "%B %d %Y"):
+        try:
+            dt = datetime.strptime(text, fmt)
+            return dt.strftime("%d-%m-%y")
+        except ValueError:
+            continue
+
+    return ""
+
+
 def get_html(url: str, session: requests.Session) -> str:
     resp = session.get(url, timeout=TIMEOUT)
     resp.raise_for_status()
 
-    # Fix mojibake / weird encoding like Â and â€™
     if not resp.encoding or resp.encoding.lower() == "iso-8859-1":
         resp.encoding = resp.apparent_encoding or "utf-8"
 
     return resp.text
 
 
-def find_date(soup: BeautifulSoup) -> str:
+def find_date_raw(soup: BeautifulSoup) -> str:
     for el in soup.find_all("time"):
         candidate = el.get("datetime", "") or el.get_text(" ", strip=True)
-        m = DATE_RE.search(candidate)
-        if m:
-            return m.group()
+        match = DATE_RE.search(candidate)
+        if match:
+            return match.group()
 
     for tag in ["p", "span", "div", "li"]:
         for el in soup.find_all(tag):
             txt = clean(el.get_text(" ", strip=True))
-            if len(txt) <= 80:
-                m = DATE_RE.search(txt)
-                if m:
-                    return m.group()
-    return ""
+            if len(txt) <= 100:
+                match = DATE_RE.search(txt)
+                if match:
+                    return match.group()
 
-
-def detect_category(soup: BeautifulSoup) -> str:
-    known = {"Press Releases", "Parliamentary QA", "Speeches", "News Highlights"}
-    for el in soup.find_all(["p", "span", "div"]):
-        txt = clean(el.get_text(" ", strip=True))
-        if txt in known:
-            return txt
     return ""
 
 
@@ -118,27 +139,15 @@ def collect_links(html: str) -> list[str]:
 def parse_article(html: str, url: str) -> dict | None:
     soup = BeautifulSoup(html, "lxml")
 
-    # Title
     h1 = soup.find("h1")
     title = clean(h1.get_text(" ", strip=True)) if h1 else ""
     if not title:
         log.info("  Skip (no title): %s", url)
         return None
 
-    # Category (keep it, but do not filter by it)
-    category = detect_category(soup)
+    raw_date = find_date_raw(soup)
+    published_date = format_date_ddmmyy(raw_date)
 
-    # Date
-    published_date = find_date(soup)
-    if published_date:
-        log.info("  Found date: %s", published_date)
-
-    # Only skip if a date was found and it is clearly not 2026
-    if published_date and "2026" not in published_date:
-        log.info("  Skip (not 2026): %s", url)
-        return None
-
-    # Find best content root
     root = (
         soup.find("main")
         or soup.find("article")
@@ -147,14 +156,12 @@ def parse_article(html: str, url: str) -> dict | None:
         or soup
     )
 
-    # Remove noise
     for noise in root.select(
         "nav, footer, script, style, noscript, header, "
         ".breadcrumb, .share, .social, .feedback, .contact, .masthead"
     ):
         noise.decompose()
 
-    # Structured extraction
     blocks = []
     seen = set()
 
@@ -165,7 +172,7 @@ def parse_article(html: str, url: str) -> dict | None:
             continue
         if txt in seen:
             continue
-        if txt == title or txt == category or txt == published_date:
+        if txt == title or txt == raw_date or txt == published_date:
             continue
 
         seen.add(txt)
@@ -177,7 +184,6 @@ def parse_article(html: str, url: str) -> dict | None:
 
     content = "\n\n".join(blocks)
 
-    # Fallback extraction
     if not content.strip():
         raw_text = root.get_text("\n", strip=True)
         lines = []
@@ -193,7 +199,7 @@ def parse_article(html: str, url: str) -> dict | None:
                 or line.startswith("Back to top")
                 or line.startswith("©")
                 or line == title
-                or line == category
+                or line == raw_date
                 or line == published_date
                 or "Government officials will never ask you" in line
                 or "ScamShield" in line
@@ -213,33 +219,32 @@ def parse_article(html: str, url: str) -> dict | None:
         log.info("  Skip (empty content): %s", url)
         return None
 
-    return {
-        "source": "MOH",
-        "title": title,
-        "url": url,
-        "published_date": published_date,
-        "category": category,
-        "content": content,
-    }
+    # Exact key order requested
+    article = OrderedDict()
+    article["source"] = "MOH"
+    article["source_type"] = "government"
+    article["title"] = title
+    article["url"] = url
+    article["published_date"] = published_date
+    article["category"] = "public_health"
+    article["content"] = content
+
+    return article
+
 
 def scrape_with_requests(max_articles: int) -> list[dict]:
     results = []
     seen_urls = set()
 
-    with requests.Session() as s:
-        s.headers.update(HEADERS)
+    with requests.Session() as session:
+        session.headers.update(HEADERS)
 
-        for page_num in range(1, 10):  # try pages 1 to 9
-            list_url = (
-                "https://www.moh.gov.sg/newsroom/"
-                "?filters=%5B%7B%22id%22%3A%22year%22%2C%22items%22%3A%5B%7B%22id%22%3A%222026%22%7D%5D%7D%5D"
-                f"&page={page_num}"
-            )
-
+        for page_num in range(1, MAX_PAGES + 1):
+            list_url = LIST_URL_TMPL.format(page=page_num)
             log.info("Fetching listing page %d...", page_num)
 
             try:
-                html = get_html(list_url, s)
+                html = get_html(list_url, session)
             except requests.RequestException as e:
                 log.error("Listing page %d failed: %s", page_num, e)
                 continue
@@ -250,13 +255,17 @@ def scrape_with_requests(max_articles: int) -> list[dict]:
             if not links:
                 break
 
+            new_links_this_page = 0
+
             for url in links:
                 if url in seen_urls:
                     continue
+
                 seen_urls.add(url)
+                new_links_this_page += 1
 
                 try:
-                    article_html = get_html(url, s)
+                    article_html = get_html(url, session)
                     article = parse_article(article_html, url)
 
                     if article:
@@ -269,9 +278,14 @@ def scrape_with_requests(max_articles: int) -> list[dict]:
                     time.sleep(SLEEP)
 
                 except Exception as e:
-                    log.error("  X %s", e)
+                    log.error("  X Failed article %s -> %s", url, e)
+
+            if new_links_this_page == 0:
+                log.info("No new links found on page %d, stopping.", page_num)
+                break
 
     return results
+
 
 def main() -> None:
     results = scrape_with_requests(MAX_ARTICLES)
