@@ -3,3 +3,4 @@
 /data/query_logs.csv
 /data/raw_sources.json
 /venv
+__pycache__
