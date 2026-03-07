@@ -56,6 +56,7 @@ def create_table(client):
         CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
             id String,
             source String,
+            source_type String,
             title String,
             url String,
             published_date String,
