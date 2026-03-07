@@ -17,6 +17,7 @@ sentence-transformers
 
 # Data Scraping & Processing
 beautifulsoup4
+lxml
 requests
 pandas
 
