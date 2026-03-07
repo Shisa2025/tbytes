@@ -124,6 +124,19 @@ export function resolveClickHouseConfig() {
   return { url, user, password, database, requestTimeout: Number.isNaN(requestTimeout) ? 30000 : requestTimeout };
 }
 
+function detectLanguage(text: string): string {
+  if (!text) return "";
+  if (/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]/.test(text)) return "zh";
+  if (/[\u3040-\u309f\u30a0-\u30ff]/.test(text)) return "ja";
+  if (/[\uac00-\ud7af]/.test(text)) return "ko";
+  if (/[\u0600-\u06ff]/.test(text)) return "ar";
+  if (/[\u0400-\u04ff]/.test(text)) return "ru";
+  if (/[\u0e00-\u0e7f]/.test(text)) return "th";
+  if (/[\u0900-\u097f]/.test(text)) return "hi";
+  if (/[a-zA-Z]/.test(text)) return "en";
+  return "";
+}
+
 export async function loadDashboardFeed(limit = 24): Promise<FeedData> {
   const cfg = resolveClickHouseConfig();
   if (!cfg.url) {
@@ -207,6 +220,7 @@ export async function loadDashboardFeed(limit = 24): Promise<FeedData> {
     const recentItems = (await recentResult.json<QueryLogItem>()).map((item) => ({
       ...item,
       verdict: (item.verdict ?? "").toLowerCase(),
+      language: item.language || detectLanguage(item.query),
     }));
 
     const riskResult = await client.query({
@@ -229,6 +243,7 @@ export async function loadDashboardFeed(limit = 24): Promise<FeedData> {
     const riskItems = (await riskResult.json<QueryLogItem>()).map((item) => ({
       ...item,
       verdict: (item.verdict ?? "").toLowerCase(),
+      language: item.language || detectLanguage(item.query),
     }));
 
     const verdictResult = await client.query({

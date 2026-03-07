@@ -14,8 +14,11 @@
   display: flex;
   flex-direction: column;
   gap: 0.95rem;
-  height: max(760px, calc(100vh - 56px));
-  min-height: 760px;
+  height: max(820px, calc(100vh - 40px));
+  min-height: 820px;
+  max-width: 1300px;
+  margin-left: auto;
+  margin-right: auto;
   border: 1px solid #c9b38f;
   border-radius: 14px 20px 16px 18px;
   padding: 1.1rem;
@@ -30,7 +33,7 @@
 .masthead {
   border-bottom: 2px solid #a8895c;
   box-shadow: 0 3px 0 #e8d5b0;
-  padding-bottom: 0.95rem;
+  padding-bottom: 0.6rem;
 }
 
 .mastheadTop {
@@ -119,23 +122,14 @@
   border-radius: 10px 16px 12px 14px;
   border: 1px solid #ccb692;
   background: linear-gradient(180deg, #f5ead3, #f0e3ca);
-  perspective: 1600px;
+  perspective: 900px;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.7),
     inset 0 -26px 42px rgba(119, 88, 47, 0.09);
 }
 
 .viewer::before {
-  content: "";
-  position: absolute;
-  top: 0.55rem;
-  bottom: 0.55rem;
-  left: calc(50% - 1px);
-  width: 2px;
-  border-radius: 999px;
-  background: linear-gradient(180deg, rgba(89, 68, 38, 0.08), rgba(60, 46, 26, 0.28), rgba(89, 68, 38, 0.08));
-  pointer-events: none;
-  z-index: 2;
+  display: none;
 }
 
 .viewer::after {
@@ -154,17 +148,15 @@
   min-height: 0;
   padding: 0.9rem;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.95rem;
   transform-style: preserve-3d;
-  backface-visibility: hidden;
-  will-change: transform, opacity, filter;
 }
 
 .sheetBase > * {
   transform-style: preserve-3d;
   backface-visibility: hidden;
-  will-change: transform, filter, opacity;
+  will-change: transform;
 }
 
 .sheetBase > :first-child {
@@ -196,30 +188,16 @@
   opacity: 0.28;
 }
 
-.flipForward {
-  animation: sheetBrighten 1900ms ease-out;
-}
-
-.flipBackward {
-  animation: sheetBrighten 1900ms ease-out;
-}
-
-/* Forward: left page opens first, right page follows after left is nearly done */
+/* Forward: page turns in from the right edge */
 .flipForward > :first-child {
-  animation: pageOpenLeft 1000ms cubic-bezier(0.22, 0.6, 0.36, 1) both;
+  transform-origin: left center;
+  animation: pageFlipIn 900ms cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
 }
 
-.flipForward > :last-child {
-  animation: pageOpenRight 1000ms cubic-bezier(0.22, 0.6, 0.36, 1) 850ms both;
-}
-
-/* Backward: right page opens first, left page follows */
+/* Backward: page turns in from the left edge */
 .flipBackward > :first-child {
-  animation: pageOpenLeft 1000ms cubic-bezier(0.22, 0.6, 0.36, 1) 850ms both;
-}
-
-.flipBackward > :last-child {
-  animation: pageOpenRight 1000ms cubic-bezier(0.22, 0.6, 0.36, 1) both;
+  transform-origin: right center;
+  animation: pageFlipInBack 900ms cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
 }
 
 .panel {
@@ -587,48 +565,152 @@
   font-weight: 400;
 }
 
-/* Left page opens from spine (rotates around its right edge) */
-@keyframes pageOpenLeft {
-  0% {
-    transform: rotateY(-90deg);
-    filter: brightness(0.5);
-  }
-
-  60% {
-    filter: brightness(0.92);
-  }
-
-  100% {
-    transform: rotateY(0deg);
-    filter: brightness(1);
-  }
+/* Page turns in from the right (hinge on left edge) */
+@keyframes pageFlipIn {
+  0% { transform: rotateY(90deg); }
+  100% { transform: rotateY(0deg); }
 }
 
-/* Right page opens from spine (rotates around its left edge) */
-@keyframes pageOpenRight {
-  0% {
-    transform: rotateY(90deg);
-    filter: brightness(0.5);
-  }
-
-  60% {
-    filter: brightness(0.92);
-  }
-
-  100% {
-    transform: rotateY(0deg);
-    filter: brightness(1);
-  }
+/* Page turns in from the left (hinge on right edge) */
+@keyframes pageFlipInBack {
+  0% { transform: rotateY(-90deg); }
+  100% { transform: rotateY(0deg); }
 }
 
-@keyframes sheetBrighten {
-  0% {
-    filter: brightness(0.88);
-  }
+/* ── Cover page ─────────────────────────────────────── */
 
-  100% {
-    filter: brightness(1);
-  }
+.coverPanel {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 6px 11px 8px 9px;
+  border: 1px solid #d8c3a2;
+  box-shadow: 0 13px 22px rgba(96, 72, 38, 0.14);
+}
+
+.coverImageWrap {
+  position: absolute;
+  inset: 0;
+}
+
+.coverImageWrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+  display: block;
+}
+
+.coverOverlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(4, 9, 26, 0.72) 0%,
+    rgba(4, 9, 26, 0.05) 30%,
+    rgba(4, 9, 26, 0.08) 52%,
+    rgba(4, 9, 26, 0.78) 72%,
+    rgba(4, 9, 26, 0.95) 100%
+  );
+  pointer-events: none;
+}
+
+.coverContent {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 1.4rem 1.5rem;
+  color: #fff;
+}
+
+.coverMagazineName {
+  font-family: var(--font-oswald), sans-serif;
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.38em;
+  text-transform: uppercase;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1.5px solid rgba(255, 255, 255, 0.7);
+  padding: 0.38rem 1rem;
+  border-radius: 3px;
+  display: inline-block;
+  backdrop-filter: blur(6px);
+}
+
+.coverHeadline {
+  font-family: var(--font-playfair), Georgia, serif;
+  font-size: clamp(4rem, 7vw, 8rem);
+  font-weight: 900;
+  line-height: 0.95;
+  letter-spacing: -0.04em;
+  color: #fff;
+  text-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.9),
+    0 6px 24px rgba(0, 0, 0, 0.7),
+    0 16px 48px rgba(0, 0, 0, 0.4);
+  margin-top: 0.7rem;
+}
+
+.coverByline {
+  font-family: var(--font-oswald), sans-serif;
+  font-size: 0.95rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #fff;
+  margin-top: 0.85rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.35);
+  padding-top: 0.65rem;
+}
+
+/* ── Table of contents ───────────────────────────────── */
+
+.tocList {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 100%;
+  min-height: 0;
+}
+
+.tocItem {
+  display: flex;
+  gap: 0.85rem;
+  align-items: center;
+  border-bottom: 1px solid #e0cdb0;
+  padding: 0.6rem 0;
+  flex: 1;
+}
+
+.tocItem:last-child {
+  border-bottom: none;
+}
+
+.tocNumber {
+  font-family: var(--font-playfair), Georgia, serif;
+  font-size: 4.2rem;
+  line-height: 1;
+  color: #c4a97a;
+  min-width: 5rem;
+  flex-shrink: 0;
+}
+
+.tocTitle {
+  font-family: var(--font-playfair), Georgia, serif;
+  font-size: 1.45rem;
+  line-height: 1.2;
+  color: #1a2744;
+  font-weight: 700;
+}
+
+.tocDesc {
+  font-size: 1rem;
+  color: #7d6846;
+  margin-top: 0.28rem;
+  line-height: 1.45;
 }
 
 @media (max-width: 1220px) {
