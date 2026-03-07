@@ -22,3 +22,5 @@ CH_DATABASE = os.getenv("CH_DATABASE", "default")
 
 if not TELEGRAM_TOKEN or not GROQ_API_KEY:
     print("WARNING: Missing API Keys!")
+
+EMBED_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"

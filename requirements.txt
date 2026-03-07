@@ -18,6 +18,7 @@ sentence-transformers
 # Data Scraping & Processing
 beautifulsoup4
 lxml
+feedparser
 requests
 pandas
 
