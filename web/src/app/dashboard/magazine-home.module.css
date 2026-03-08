@@ -45,6 +45,13 @@
   gap: 0.8rem;
 }
 
+.controlActions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.42rem;
+}
+
 .translateButton {
   border-radius: 999px;
   border: 1px solid #b9ab8e;
@@ -57,6 +64,27 @@
   padding: 0.38rem 0.68rem;
   cursor: pointer;
   white-space: nowrap;
+}
+
+.downloadButton {
+  border-radius: 999px;
+  border: 1px solid #13325f;
+  background: linear-gradient(180deg, #2b64b6, #1d4f95);
+  color: #f9fbff;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.38rem 0.7rem;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 5px 12px rgba(18, 44, 82, 0.22);
+}
+
+.downloadButton:disabled,
+.translateButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .translateButtonOn {
@@ -281,6 +309,19 @@
   line-height: 1.08;
   letter-spacing: -0.02em;
   color: #1a2744;
+}
+
+.exportCapture .panelTitle {
+  line-height: 1.18;
+  padding-top: 0.08em;
+  overflow: visible;
+}
+
+.exportCapture h1,
+.exportCapture h2,
+.exportCapture h3,
+.exportCapture h4 {
+  overflow: visible;
 }
 
 .panelSubtitle {
@@ -960,6 +1001,12 @@
   .topControls {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .controlActions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 
   .sheetBase {

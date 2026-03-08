@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { jsPDF } from "jspdf";
+import html2canvas from "html2canvas";
+import { useMemo, useRef, useState } from "react";
 import type { FeedData, FrequentQuestionItem, QueryLogItem } from "./clickhouse-feed";
 import styles from "./magazine-home.module.css";
 
@@ -174,6 +176,9 @@ export default function MagazineHome({ feed }: { feed: FeedData }) {
   const [translationLoading, setTranslationLoading] = useState(false);
   const [translationError, setTranslationError] = useState("");
   const [translatedMap, setTranslatedMap] = useState<Record<string, string>>({});
+  const [downloadLoading, setDownloadLoading] = useState(false);
+  const [downloadError, setDownloadError] = useState("");
+  const viewerRef = useRef<HTMLDivElement | null>(null);
 
   const recent = useMemo(() => feed.recentItems, [feed.recentItems]);
   const risks = useMemo(() => feed.riskItems, [feed.riskItems]);
@@ -360,6 +365,179 @@ export default function MagazineHome({ feed }: { feed: FeedData }) {
     setDirection(delta);
     setPage(next);
     setFlipKey((k) => k + 1);
+  }
+
+  async function waitForPaint() {
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  }
+
+  function isLikelyBlankCanvas(canvas: HTMLCanvasElement) {
+    if (canvas.width < 8 || canvas.height < 8) return true;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return false;
+
+    try {
+      const base = ctx.getImageData(0, 0, 1, 1).data;
+      const samples = 72;
+      let varied = 0;
+
+      for (let i = 1; i <= samples; i += 1) {
+        const x = Math.floor((canvas.width - 1) * (i / (samples + 1)));
+        const y = Math.floor((canvas.height - 1) * (((i * 13) % (samples + 1)) / (samples + 1)));
+        const px = ctx.getImageData(x, y, 1, 1).data;
+        const diff =
+          Math.abs(px[0] - base[0]) +
+          Math.abs(px[1] - base[1]) +
+          Math.abs(px[2] - base[2]) +
+          Math.abs(px[3] - base[3]);
+        if (diff > 20) {
+          varied += 1;
+          if (varied >= 3) return false;
+        }
+      }
+      return true;
+    } catch {
+      // If pixel read fails (security/browser edge), don't treat it as blank.
+      return false;
+    }
+  }
+
+  function preparePageNodeForExport(pageNode: HTMLElement) {
+    const undoStack: Array<() => void> = [];
+    const setStyle = (el: HTMLElement, key: string, value: string) => {
+      const previous = el.style.getPropertyValue(key);
+      const hadValue = previous.length > 0;
+      el.style.setProperty(key, value);
+      undoStack.push(() => {
+        if (hadValue) {
+          el.style.setProperty(key, previous);
+        } else {
+          el.style.removeProperty(key);
+        }
+      });
+    };
+
+    setStyle(pageNode, "height", "auto");
+    setStyle(pageNode, "minHeight", "auto");
+    setStyle(pageNode, "overflow", "visible");
+    setStyle(pageNode, "transform", "none");
+    setStyle(pageNode, "animation", "none");
+    setStyle(pageNode, "backface-visibility", "visible");
+    setStyle(pageNode, "-webkit-font-smoothing", "antialiased");
+    setStyle(pageNode, "text-rendering", "geometricPrecision");
+    pageNode.classList.add(styles.exportCapture);
+    undoStack.push(() => {
+      pageNode.classList.remove(styles.exportCapture);
+    });
+
+    const scrollBlocks = pageNode.querySelectorAll<HTMLElement>(`.${styles.scrollBlock}`);
+    scrollBlocks.forEach((node) => {
+      setStyle(node, "overflow", "visible");
+      setStyle(node, "maxHeight", "none");
+      setStyle(node, "height", "auto");
+      setStyle(node, "minHeight", "auto");
+      setStyle(node, "paddingRight", "0");
+      node.scrollTop = 0;
+    });
+
+    const framedBlocks = pageNode.querySelectorAll<HTMLElement>(`.${styles.panel}, .${styles.coverPanel}`);
+    framedBlocks.forEach((node) => {
+      setStyle(node, "minHeight", "auto");
+      setStyle(node, "height", "auto");
+      setStyle(node, "overflow", "visible");
+    });
+
+    return () => {
+      for (let i = undoStack.length - 1; i >= 0; i -= 1) {
+        undoStack[i]();
+      }
+    };
+  }
+
+  async function onDownloadMagazine() {
+    if (downloadLoading) return;
+    const viewer = viewerRef.current;
+    if (!viewer) return;
+
+    setDownloadLoading(true);
+    setDownloadError("");
+    const originalPage = page;
+
+    try {
+      let pdf: jsPDF | null = null;
+      const sheet = viewer.querySelector<HTMLElement>(`.${styles.sheetBase}`);
+      if (!sheet) {
+        throw new Error("Unable to locate magazine sheet for export.");
+      }
+      const docWithFonts = document as Document & { fonts?: { ready: Promise<unknown> } };
+      if (docWithFonts.fonts?.ready) {
+        await docWithFonts.fonts.ready;
+      }
+
+      for (let i = 0; i < totalPages; i += 1) {
+        setPage(i);
+        await waitForPaint();
+
+        const pageNode = sheet.firstElementChild as HTMLElement | null;
+        if (!pageNode) {
+          throw new Error("Unable to locate rendered magazine page.");
+        }
+        const restore = preparePageNodeForExport(pageNode);
+        const preparedCanvas = await html2canvas(pageNode, {
+          scale: 2,
+          useCORS: true,
+          logging: false,
+          backgroundColor: "#f5ead3",
+        }).finally(() => {
+          restore();
+        });
+
+        let canvas = preparedCanvas;
+        if (isLikelyBlankCanvas(preparedCanvas)) {
+          // Fallback: capture the current page again without export-time style overrides.
+          canvas = await html2canvas(pageNode, {
+            scale: 2,
+            useCORS: true,
+            logging: false,
+            backgroundColor: "#f5ead3",
+          });
+          if (isLikelyBlankCanvas(canvas)) {
+            throw new Error("Export capture returned blank pages. Please retry after refreshing.");
+          }
+        }
+
+        const orientation = canvas.width >= canvas.height ? "landscape" : "portrait";
+        const format: [number, number] = [canvas.width, canvas.height];
+        if (!pdf) {
+          // Use native captured size so aspect ratio is preserved exactly.
+          pdf = new jsPDF({
+            orientation,
+            unit: "px",
+            format,
+            compress: true,
+          });
+        } else {
+          pdf.addPage(format, orientation);
+        }
+
+        const imgData = canvas.toDataURL("image/png");
+        pdf.addImage(imgData, "PNG", 0, 0, canvas.width, canvas.height, undefined, "FAST");
+      }
+
+      if (!pdf) {
+        throw new Error("No pages were captured.");
+      }
+      const stamp = new Date().toISOString().slice(0, 10);
+      pdf.save(`scam-watch-weekly-${stamp}.pdf`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to generate PDF.";
+      setDownloadError(message);
+    } finally {
+      setPage(originalPage);
+      setFlipKey((k) => k + 1);
+      setDownloadLoading(false);
+    }
   }
 
   const spread = (
@@ -575,8 +753,8 @@ export default function MagazineHome({ feed }: { feed: FeedData }) {
               <p className={styles.panelSubtitle}>No verdict data found for the last 14 days.</p>
             ) : (
               <div className={styles.metricRows}>
-                {feed.verdictCounts.map((row) => (
-                  <div key={row.verdict}>
+                {feed.verdictCounts.map((row, index) => (
+                  <div key={`${row.verdict}-${index}`}>
                     <div className={styles.metricHeader}>
                       <span className={styles.metricName}>{verdictLabel(row.verdict)}</span>
                       <span className={styles.metricValue}>{row.count}</span>
@@ -865,16 +1043,27 @@ export default function MagazineHome({ feed }: { feed: FeedData }) {
       <header className={styles.masthead}>
         <div className={styles.topControls}>
           <h1 className={styles.title}>Scam Watch Weekly</h1>
-          <button
-            type="button"
-            onClick={onToggleTranslate}
-            disabled={translationLoading}
-            className={`${styles.translateButton} ${translateToEnglish ? styles.translateButtonOn : ""}`}
-          >
-            {translationLoading ? "Translating..." : translateToEnglish ? "Show Original" : "Translate to English"}
-          </button>
+          <div className={styles.controlActions}>
+            <button
+              type="button"
+              onClick={onToggleTranslate}
+              disabled={translationLoading || downloadLoading}
+              className={`${styles.translateButton} ${translateToEnglish ? styles.translateButtonOn : ""}`}
+            >
+              {translationLoading ? "Translating..." : translateToEnglish ? "Show Original" : "Translate to English"}
+            </button>
+            <button
+              type="button"
+              onClick={onDownloadMagazine}
+              disabled={downloadLoading || translationLoading}
+              className={styles.downloadButton}
+            >
+              {downloadLoading ? "Downloading..." : "Download Magazine"}
+            </button>
+          </div>
         </div>
         {translationError ? <p className={styles.translationError}>{translationError}</p> : null}
+        {downloadError ? <p className={styles.translationError}>{downloadError}</p> : null}
       </header>
 
       {!feed.connected ? (
@@ -889,7 +1078,7 @@ export default function MagazineHome({ feed }: { feed: FeedData }) {
         </div>
       ) : null}
 
-      <div className={styles.viewer}>
+      <div ref={viewerRef} className={styles.viewer}>
         <div key={flipKey} className={`${styles.sheetBase} ${direction > 0 ? styles.flipForward : styles.flipBackward}`}>
           {spread}
         </div>

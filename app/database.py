@@ -6,9 +6,13 @@ from sentence_transformers import SentenceTransformer
 from .config import CH_HOST, CH_PORT, CH_USER, CH_PASSWORD
 
 
+class EvidenceQueryError(RuntimeError):
+    """Raised when trusted evidence retrieval cannot be completed."""
+
+
 TABLE_NAME = "trusted_info"
-MAX_COSINE_DISTANCE = 0.45
-MIN_KEYWORD_OVERLAP = 0.25
+MAX_COSINE_DISTANCE = 0.55
+MIN_KEYWORD_OVERLAP = 0.15
 ANCHOR_STOPWORDS = {
     "singapore", "news", "claim", "claims", "true", "false", "verify",
     "verified", "unverified", "misleading", "rumour", "rumor", "article",
@@ -54,7 +58,7 @@ def _extract_anchor_terms(query: str) -> set[str]:
 
 def search_trusted_evidence(
     user_query: str,
-    limit: int = 3,
+    limit: int = 5,
     max_distance: float = MAX_COSINE_DISTANCE,
     min_keyword_overlap: float = MIN_KEYWORD_OVERLAP,
 ):
@@ -78,7 +82,7 @@ def search_trusted_evidence(
                 cosineDistance(embedding, {query_vector}) AS score
             FROM trusted_info
             ORDER BY score ASC
-            LIMIT 30
+            LIMIT 60
         """)
 
         anchor_terms = _extract_anchor_terms(user_query)
@@ -88,10 +92,14 @@ def search_trusted_evidence(
             candidate_text = f"{title} {content}".lower()
             lexical_score = _keyword_overlap_ratio(user_query, candidate_text)
             distance = float(distance)
+            semantic_match = distance <= max_distance
+            lexical_match = lexical_score >= min_keyword_overlap
 
-            if distance > max_distance and lexical_score < min_keyword_overlap:
+            if not (semantic_match or lexical_match):
                 continue
-            if anchor_terms and not any(term in candidate_text for term in anchor_terms):
+            # Anchor terms are only enforced for weak/lexical-only matches.
+            # Strong semantic matches should not be dropped due wording mismatch.
+            if anchor_terms and not any(term in candidate_text for term in anchor_terms) and not semantic_match:
                 continue
 
             ranked.append({
@@ -110,14 +118,15 @@ def search_trusted_evidence(
         return ranked[:limit]
 
     except Exception as e:
-        # If the venue Wi-Fi blocks the port, catch it safely so the bot doesn't crash!
-        print(f"ClickHouse Connection Blocked or Failed: {e}")
-        return []
+        # Bubble up retrieval failures so caller can report a real query error.
+        message = f"ClickHouse Connection Blocked or Failed: {e}"
+        print(message)
+        raise EvidenceQueryError(message) from e
 
 
 def search_trusted_context(
     user_query: str,
-    limit: int = 3,
+    limit: int = 5,
     max_distance: float = MAX_COSINE_DISTANCE,
 ):
     """

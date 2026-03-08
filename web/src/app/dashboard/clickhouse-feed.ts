@@ -212,6 +212,18 @@ function normalizeVerdict(value: string): "true" | "false" | "misleading" | "unv
   return "unknown";
 }
 
+function mergeVerdictCounts(rows: Array<{ verdict: string; count: number }>) {
+  const merged = new Map<"true" | "false" | "misleading" | "unverified" | "unknown", number>();
+  for (const row of rows) {
+    const verdict = normalizeVerdict(row.verdict ?? "");
+    const count = Number(row.count) || 0;
+    merged.set(verdict, (merged.get(verdict) ?? 0) + count);
+  }
+  return [...merged.entries()]
+    .map(([verdict, count]) => ({ verdict, count }))
+    .sort((a, b) => b.count - a.count);
+}
+
 function loadJsonFromDataDir<T>(fileName: string): T | undefined {
   const candidates = [
     path.resolve(process.cwd(), "data", fileName),
@@ -553,10 +565,7 @@ export async function loadDashboardFeed(limit = 24): Promise<FeedData> {
         computePandasFallback(recentItems),
       queryFamilies: buildQueryFamilies(recentItems, 10),
       wordMap: buildWordMap(recentItems, 44),
-      verdictCounts: verdictCounts.map((item) => ({
-        verdict: normalizeVerdict(item.verdict ?? ""),
-        count: Number(item.count) || 0,
-      })),
+      verdictCounts: mergeVerdictCounts(verdictCounts),
     };
   } catch (error) {
     return {
