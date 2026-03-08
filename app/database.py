@@ -6,6 +6,7 @@ from .config import CH_HOST, CH_PORT, CH_USER, CH_PASSWORD
 
 
 TABLE_NAME = "trusted_info"
+MAX_COSINE_DISTANCE = 0.45
 
 model = SentenceTransformer(
     "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
@@ -19,7 +20,11 @@ client = clickhouse_connect.get_client(
     secure=True,
 )
 
-def search_trusted_context(user_query: str, limit: int = 3):
+def search_trusted_context(
+    user_query: str,
+    limit: int = 3,
+    max_distance: float = MAX_COSINE_DISTANCE,
+):
     """
     Performs a Vector Search in ClickHouse using Cosine Distance.
     """
@@ -33,7 +38,10 @@ def search_trusted_context(user_query: str, limit: int = 3):
             LIMIT {limit}
         """)
 
-        context_chunks = [row[0] for row in result.result_rows]
+        # Keep only semantically relevant chunks; low-quality top-k matches should
+        # be treated as "no trusted context" so the OpenAI fallback can run.
+        relevant_rows = [row for row in result.result_rows if float(row[2]) <= max_distance]
+        context_chunks = [row[0] for row in relevant_rows]
         return "\n\n".join(context_chunks)
         
     except Exception as e:
