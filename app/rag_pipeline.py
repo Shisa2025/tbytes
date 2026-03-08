@@ -109,12 +109,16 @@ def _format_section_spacing(text: str) -> str:
     lines = [line.rstrip() for line in text.splitlines()]
     out: list[str] = []
 
-    for i, line in enumerate(lines):
+    def _is_header(line: str) -> bool:
         stripped = line.strip()
-        if stripped in SECTION_HEADERS and out and out[-1] != "":
+        return any(stripped.startswith(header) for header in SECTION_HEADERS)
+
+    for i, line in enumerate(lines):
+        is_header = _is_header(line)
+        if is_header and out and out[-1] != "":
             out.append("")
         out.append(line)
-        if stripped in SECTION_HEADERS:
+        if is_header:
             next_line = lines[i + 1].strip() if i + 1 < len(lines) else ""
             if next_line != "":
                 out.append("")

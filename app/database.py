@@ -9,6 +9,12 @@ from .config import CH_HOST, CH_PORT, CH_USER, CH_PASSWORD
 TABLE_NAME = "trusted_info"
 MAX_COSINE_DISTANCE = 0.45
 MIN_KEYWORD_OVERLAP = 0.25
+ANCHOR_STOPWORDS = {
+    "singapore", "news", "claim", "claims", "true", "false", "verify",
+    "verified", "unverified", "misleading", "rumour", "rumor", "article",
+    "official", "update", "updates", "about", "what", "where", "when",
+    "have", "does", "is", "are", "many",
+}
 
 model = SentenceTransformer(
     "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
@@ -35,6 +41,15 @@ def _keyword_overlap_ratio(query: str, candidate: str) -> float:
         return 0.0
     overlap = len(query_terms.intersection(candidate_terms))
     return overlap / len(query_terms)
+
+
+def _extract_anchor_terms(query: str) -> set[str]:
+    """
+    Query anchors are high-signal tokens (brand/place/entity-like terms) that
+    should be present in relevant evidence to avoid semantic drift.
+    """
+    tokens = _tokenize(query)
+    return {t for t in tokens if len(t) >= 5 and t not in ANCHOR_STOPWORDS}
 
 
 def search_trusted_evidence(
@@ -66,13 +81,17 @@ def search_trusted_evidence(
             LIMIT 30
         """)
 
+        anchor_terms = _extract_anchor_terms(user_query)
         ranked = []
         for row in result.result_rows:
             content, source, title, url, published_date, category, distance = row
-            lexical_score = _keyword_overlap_ratio(user_query, f"{title} {content}")
+            candidate_text = f"{title} {content}".lower()
+            lexical_score = _keyword_overlap_ratio(user_query, candidate_text)
             distance = float(distance)
 
             if distance > max_distance and lexical_score < min_keyword_overlap:
+                continue
+            if anchor_terms and not any(term in candidate_text for term in anchor_terms):
                 continue
 
             ranked.append({
