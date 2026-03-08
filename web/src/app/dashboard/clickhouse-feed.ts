@@ -279,7 +279,7 @@ function buildFrequentQuestions(items: QueryLogItem[], topN = 8): FrequentQuesti
         count: 1,
         latestTimestamp: Number.isNaN(ts) ? 0 : ts,
         latestVerdict: (item.verdict || "unknown").toLowerCase(),
-        latestLanguage: item.language || detectLanguage(question) || "unknown",
+        latestLanguage: ((item.language && item.language.toLowerCase() !== "unknown") ? item.language : detectLanguage(question)) || "en",
         answer: answer || fallbackAnswerFromVerdict(item.verdict),
       });
       continue;
@@ -289,7 +289,7 @@ function buildFrequentQuestions(items: QueryLogItem[], topN = 8): FrequentQuesti
     if (!Number.isNaN(ts) && ts >= current.latestTimestamp) {
       current.latestTimestamp = ts;
       current.latestVerdict = (item.verdict || "unknown").toLowerCase();
-      current.latestLanguage = item.language || detectLanguage(question) || "unknown";
+      current.latestLanguage = ((item.language && item.language.toLowerCase() !== "unknown") ? item.language : detectLanguage(question)) || "en";
       if (answer) current.answer = answer;
     } else if (!current.answer && answer) {
       current.answer = answer;
@@ -321,7 +321,7 @@ function computePandasFallback(recentItems: QueryLogItem[]): PandasSnapshot {
     const v = (row.verdict || "unknown").toLowerCase();
     verdict.set(v, (verdict.get(v) ?? 0) + 1);
 
-    const l = (row.language || detectLanguage(row.query) || "unknown").toLowerCase();
+    const l = (((row.language && row.language.toLowerCase() !== "unknown") ? row.language : detectLanguage(row.query)) || "en").toLowerCase();
     language.set(l, (language.get(l) ?? 0) + 1);
 
     const m = (row.media_type || "unknown").toLowerCase();
@@ -490,7 +490,9 @@ export async function loadDashboardFeed(limit = 24): Promise<FeedData> {
     const recentItems = (await recentResult.json<QueryLogItem>()).map((item) => ({
       ...item,
       verdict: normalizeVerdict(item.verdict ?? ""),
-      language: item.language || detectLanguage(item.query),
+      language: (item.language && item.language.toLowerCase() !== "unknown")
+        ? item.language
+        : detectLanguage(item.query),
     }));
 
     const riskResult = await client.query({
@@ -521,7 +523,9 @@ export async function loadDashboardFeed(limit = 24): Promise<FeedData> {
     const riskItems = (await riskResult.json<QueryLogItem>()).map((item) => ({
       ...item,
       verdict: normalizeVerdict(item.verdict ?? ""),
-      language: item.language || detectLanguage(item.query),
+      language: (item.language && item.language.toLowerCase() !== "unknown")
+        ? item.language
+        : detectLanguage(item.query),
     }));
 
     const verdictResult = await client.query({
