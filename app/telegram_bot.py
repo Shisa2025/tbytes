@@ -1,10 +1,10 @@
 import httpx
 import os
 
-from sympy import false
 from .config import TELEGRAM_TOKEN
 from .rag_pipeline import verify_claim
 from .logger import log_query
+from .text_utils import detect_language_tag
 import logging
 from .media_processor import process_media
 
@@ -20,21 +20,6 @@ DEBUG_MODE=True
 
 # Ensure a temporary folder exists for downloads
 os.makedirs("temp_media", exist_ok=True)
-
-def _detect_language_tag(text: str) -> str:
-    if not text:
-        return "unknown"
-    if any("\u4e00" <= ch <= "\u9fff" for ch in text):
-        return "zh"
-    if any("\u0e00" <= ch <= "\u0e7f" for ch in text):
-        return "th"
-    if any("\u0600" <= ch <= "\u06ff" for ch in text):
-        return "ar"
-    if any("\u0900" <= ch <= "\u097f" for ch in text):
-        return "hi"
-    if any(ch.isalpha() for ch in text):
-        return "en"
-    return "unknown"
 
 def _extract_verdict_tag(verdict_text: str) -> str:
     v = (verdict_text or "").lower()
@@ -110,7 +95,7 @@ async def handle_telegram_webhook(data: dict):
             print(f"SUCCESSFULLY RETRIEVED: {user_text}")
         
         verdict_text = verify_claim(user_text)
-        log_query(_detect_language_tag(user_text), user_text, _extract_verdict_tag(verdict_text))
+        log_query(detect_language_tag(user_text), user_text, _extract_verdict_tag(verdict_text))
         await send_message(chat_id, verdict_text)
         
         
