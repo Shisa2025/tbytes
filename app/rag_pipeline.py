@@ -109,11 +109,15 @@ def _format_section_spacing(text: str) -> str:
     lines = [line.rstrip() for line in text.splitlines()]
     out: list[str] = []
 
-    for line in lines:
+    for i, line in enumerate(lines):
         stripped = line.strip()
         if stripped in SECTION_HEADERS and out and out[-1] != "":
             out.append("")
         out.append(line)
+        if stripped in SECTION_HEADERS:
+            next_line = lines[i + 1].strip() if i + 1 < len(lines) else ""
+            if next_line != "":
+                out.append("")
 
     return "\n".join(out).strip()
 
