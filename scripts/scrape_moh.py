@@ -1,15 +1,17 @@
 """
 MOH Newsroom Scraper
-Scrapes up to 100 MOH newsroom articles and saves them in the format:
-"source", "source_type", "title", "url", "published_date", "category", "content"
+Scrapes MOH newsroom entries from MOH, including both newer and older articles.
+
+Usage:
+    python scripts/scrape_moh.py
+    python scripts/scrape_moh.py --max-articles 200 --max-pages 80
 """
 
+import argparse
 import json
 import logging
 import re
 import time
-from collections import OrderedDict
-from datetime import datetime
 from pathlib import Path
 from urllib.parse import urljoin
 
@@ -17,10 +19,7 @@ import requests
 from bs4 import BeautifulSoup
 
 BASE = "https://www.moh.gov.sg"
-LIST_URL_TMPL = (
-    "https://www.moh.gov.sg/newsroom/"
-    "?filters=%5B%5D&page={page}"
-)
+LIST_URL_TMPL = "https://www.moh.gov.sg/newsroom/?page={page}"
 
 HEADERS = {
     "User-Agent": (
@@ -32,10 +31,11 @@ HEADERS = {
 }
 
 OUTPUT_FILE = Path("data/moh_newsroom.json")
-MAX_ARTICLES = 100
-MAX_PAGES = 25
+MAX_ARTICLES = 200
+MAX_PAGES = 80
 TIMEOUT = 30
 SLEEP = 1.0
+MIN_CONTENT_LENGTH = 200
 
 logging.basicConfig(
     level=logging.INFO,
@@ -50,40 +50,14 @@ MONTHS = [
 ]
 
 DATE_RE = re.compile(
-    r"\b(?:"
-    + "|".join(MONTHS)
-    + r")\s+\d{1,2},?\s+\d{4}\b"
-    + r"|\b\d{1,2}\s+(?:"
-    + "|".join(MONTHS)
-    + r")\s+\d{4}\b",
+    r"\b(?:" + "|".join(MONTHS) + r")\s+\d{1,2},?\s+\d{4}\b"
+    r"|\b\d{1,2}\s+(?:" + "|".join(MONTHS) + r")\s+\d{4}\b",
     re.IGNORECASE,
 )
 
 
 def clean(text: str) -> str:
     return re.sub(r"\s+", " ", text or "").strip()
-
-
-def format_date_ddmmyy(date_str: str) -> str:
-    """
-    Convert dates like:
-    - '6 March 2026'
-    - 'March 6, 2026'
-    into dd-mm-yy format, e.g. 06-03-26
-    """
-    if not date_str:
-        return ""
-
-    text = clean(date_str).replace(",", "")
-
-    for fmt in ("%d %B %Y", "%B %d %Y"):
-        try:
-            dt = datetime.strptime(text, fmt)
-            return dt.strftime("%d-%m-%y")
-        except ValueError:
-            continue
-
-    return ""
 
 
 def get_html(url: str, session: requests.Session) -> str:
@@ -96,20 +70,39 @@ def get_html(url: str, session: requests.Session) -> str:
     return resp.text
 
 
-def find_date_raw(soup: BeautifulSoup) -> str:
+def find_date(soup: BeautifulSoup) -> str:
     for el in soup.find_all("time"):
         candidate = el.get("datetime", "") or el.get_text(" ", strip=True)
-        match = DATE_RE.search(candidate)
-        if match:
-            return match.group()
+        m = DATE_RE.search(candidate)
+        if m:
+            return m.group()
 
     for tag in ["p", "span", "div", "li"]:
         for el in soup.find_all(tag):
             txt = clean(el.get_text(" ", strip=True))
-            if len(txt) <= 100:
-                match = DATE_RE.search(txt)
-                if match:
-                    return match.group()
+            if len(txt) <= 120:
+                m = DATE_RE.search(txt)
+                if m:
+                    return m.group()
+
+    return ""
+
+
+def detect_category(soup: BeautifulSoup) -> str:
+    known = {
+        "Press Releases",
+        "Parliamentary QA",
+        "Speeches",
+        "News Highlights",
+        "Circulars",
+        "Consultations",
+        "Advisories",
+    }
+
+    for el in soup.find_all(["p", "span", "div", "li"]):
+        txt = clean(el.get_text(" ", strip=True))
+        if txt in known:
+            return txt
 
     return ""
 
@@ -122,21 +115,42 @@ def collect_links(html: str) -> list[str]:
     for a in soup.find_all("a", href=True):
         href = a["href"].strip()
 
-        if (
-            href.startswith("/newsroom/")
-            and href not in {"/newsroom/", "/newsroom"}
-            and "?" not in href
-            and "#" not in href
-        ):
-            url = urljoin(BASE, href)
-            if url not in seen:
-                seen.add(url)
-                links.append(url)
+        if not href.startswith("/newsroom/"):
+            continue
+        if href in {"/newsroom/", "/newsroom"}:
+            continue
+        if "#" in href:
+            continue
+
+        # Remove query string but keep article path
+        href = href.split("?", 1)[0].rstrip("/")
+
+        # Skip generic landing pages
+        if href.lower() in {"/newsroom", "/newsroom/"}:
+            continue
+
+        url = urljoin(BASE, href)
+
+        if url not in seen:
+            seen.add(url)
+            links.append(url)
 
     return links
 
 
-def parse_article(html: str, url: str) -> dict | None:
+def remove_noise(root: BeautifulSoup) -> None:
+    selectors = (
+        "nav, footer, script, style, noscript, header, "
+        ".breadcrumb, .share, .social, .feedback, .contact, .masthead, "
+        ".related, .related-links, .recommended, .sidebar, .search, "
+        ".cookie, .alert, .subscription, .newsletter"
+    )
+
+    for noise in root.select(selectors):
+        noise.decompose()
+
+
+def parse_article(html: str, url: str, min_content_length: int = MIN_CONTENT_LENGTH) -> dict | None:
     soup = BeautifulSoup(html, "lxml")
 
     h1 = soup.find("h1")
@@ -145,8 +159,8 @@ def parse_article(html: str, url: str) -> dict | None:
         log.info("  Skip (no title): %s", url)
         return None
 
-    raw_date = find_date_raw(soup)
-    published_date = format_date_ddmmyy(raw_date)
+    category = detect_category(soup)
+    published_date = find_date(soup)
 
     root = (
         soup.find("main")
@@ -156,150 +170,211 @@ def parse_article(html: str, url: str) -> dict | None:
         or soup
     )
 
-    for noise in root.select(
-        "nav, footer, script, style, noscript, header, "
-        ".breadcrumb, .share, .social, .feedback, .contact, .masthead"
-    ):
-        noise.decompose()
+    remove_noise(root)
 
     blocks = []
-    seen = set()
+    seen_text = set()
 
     for el in root.find_all(["h2", "h3", "h4", "p", "li"]):
         txt = clean(el.get_text(" ", strip=True))
 
         if len(txt) < 20:
             continue
-        if txt in seen:
+        if txt in seen_text:
             continue
-        if txt == title or txt == raw_date or txt == published_date:
+        if txt in {title, category, published_date}:
+            continue
+        if txt.startswith("Skip to main content"):
+            continue
+        if txt.startswith("Back to top"):
             continue
 
-        seen.add(txt)
+        seen_text.add(txt)
 
         if el.name in {"h2", "h3", "h4"}:
             blocks.append(f"### {txt}")
         else:
             blocks.append(txt)
 
-    content = "\n\n".join(blocks)
+    content = "\n\n".join(blocks).strip()
 
-    if not content.strip():
+    if len(content) < min_content_length:
         raw_text = root.get_text("\n", strip=True)
         lines = []
-        seen = set()
+        seen_lines = set()
 
         for line in raw_text.splitlines():
             line = clean(line)
 
-            if (
-                len(line) < 20
-                or line in seen
-                or line.startswith("Skip to main content")
-                or line.startswith("Back to top")
-                or line.startswith("©")
-                or line == title
-                or line == raw_date
-                or line == published_date
-                or "Government officials will never ask you" in line
-                or "ScamShield" in line
-                or line in {
-                    "Home", "Newsroom", "Resources", "About us",
-                    "Contact", "Feedback", "Ministry of Health"
-                }
-            ):
+            if len(line) < 20:
+                continue
+            if line in seen_lines:
+                continue
+            if line in {title, category, published_date}:
+                continue
+            if line.startswith("Skip to main content"):
+                continue
+            if line.startswith("Back to top"):
+                continue
+            if line.startswith("©"):
+                continue
+            if "ScamShield" in line:
+                continue
+            if line in {
+                "Home", "Newsroom", "Resources", "About us",
+                "Contact", "Feedback", "Ministry of Health"
+            }:
                 continue
 
-            seen.add(line)
+            seen_lines.add(line)
             lines.append(line)
 
-        content = "\n\n".join(lines)
+        content = "\n\n".join(lines).strip()
 
-    if not content.strip():
-        log.info("  Skip (empty content): %s", url)
+    if len(content) < min_content_length:
+        log.info("  Skip (content too short): %s", url)
         return None
 
-    # Exact key order requested
-    article = OrderedDict()
-    article["source"] = "MOH"
-    article["source_type"] = "government"
-    article["title"] = title
-    article["url"] = url
-    article["published_date"] = published_date
-    article["category"] = "public_health"
-    article["content"] = content
-
-    return article
+    return {
+        "source": "MOH",
+        "source_type": "government",
+        "title": title,
+        "url": url,
+        "published_date": published_date,
+        "category": category,
+        "content": content,
+    }
 
 
-def scrape_with_requests(max_articles: int) -> list[dict]:
+def dedupe_articles(articles: list[dict]) -> list[dict]:
+    unique = []
+    seen_urls = set()
+    seen_keys = set()
+
+    for article in articles:
+        url = article.get("url", "").rstrip("/")
+        title = clean(article.get("title", "")).lower()
+        date = clean(article.get("published_date", "")).lower()
+        key = (title, date)
+
+        if url and url in seen_urls:
+            continue
+        if key in seen_keys:
+            continue
+
+        if url:
+            seen_urls.add(url)
+        seen_keys.add(key)
+        unique.append(article)
+
+    return unique
+
+
+def scrape_with_requests(
+    max_articles: int,
+    max_pages: int,
+    min_content_length: int,
+) -> list[dict]:
     results = []
     seen_urls = set()
+    consecutive_empty_pages = 0
 
-    with requests.Session() as session:
-        session.headers.update(HEADERS)
+    with requests.Session() as s:
+        s.headers.update(HEADERS)
 
-        for page_num in range(1, MAX_PAGES + 1):
+        for page_num in range(1, max_pages + 1):
             list_url = LIST_URL_TMPL.format(page=page_num)
             log.info("Fetching listing page %d...", page_num)
 
             try:
-                html = get_html(list_url, session)
+                html = get_html(list_url, s)
             except requests.RequestException as e:
                 log.error("Listing page %d failed: %s", page_num, e)
                 continue
 
             links = collect_links(html)
-            log.info("Found %d links on page %d", len(links), page_num)
+            log.info("Found %d candidate links on page %d", len(links), page_num)
 
-            if not links:
-                break
+            new_links = [url for url in links if url not in seen_urls]
+            if not new_links:
+                consecutive_empty_pages += 1
+                if consecutive_empty_pages >= 3:
+                    log.info("Stopping after %d consecutive pages with no new links.", consecutive_empty_pages)
+                    break
+                continue
 
-            new_links_this_page = 0
+            consecutive_empty_pages = 0
 
-            for url in links:
-                if url in seen_urls:
-                    continue
-
+            for url in new_links:
                 seen_urls.add(url)
-                new_links_this_page += 1
 
                 try:
-                    article_html = get_html(url, session)
-                    article = parse_article(article_html, url)
+                    article_html = get_html(url, s)
+                    article = parse_article(article_html, url, min_content_length=min_content_length)
 
                     if article:
                         results.append(article)
-                        log.info("  ✓ %s", article["title"][:80])
+                        log.info("  ✓ %s", article["title"][:100])
 
                     if len(results) >= max_articles:
-                        return results
+                        return dedupe_articles(results)
 
                     time.sleep(SLEEP)
 
                 except Exception as e:
-                    log.error("  X Failed article %s -> %s", url, e)
+                    log.error("  X Failed article %s: %s", url, e)
 
-            if new_links_this_page == 0:
-                log.info("No new links found on page %d, stopping.", page_num)
-                break
+    return dedupe_articles(results)
 
-    return results
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Scrape MOH newsroom articles.")
+    parser.add_argument(
+        "--max-articles",
+        type=int,
+        default=MAX_ARTICLES,
+        help=f"Maximum number of articles to collect (default: {MAX_ARTICLES})",
+    )
+    parser.add_argument(
+        "--max-pages",
+        type=int,
+        default=MAX_PAGES,
+        help=f"Maximum number of listing pages to scan (default: {MAX_PAGES})",
+    )
+    parser.add_argument(
+        "--min-content-length",
+        type=int,
+        default=MIN_CONTENT_LENGTH,
+        help=f"Minimum extracted content length required (default: {MIN_CONTENT_LENGTH})",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=OUTPUT_FILE,
+        help=f"Output JSON file (default: {OUTPUT_FILE})",
+    )
+    return parser.parse_args()
 
 
 def main() -> None:
-    results = scrape_with_requests(MAX_ARTICLES)
+    args = parse_args()
+
+    results = scrape_with_requests(
+        max_articles=max(1, args.max_articles),
+        max_pages=max(1, args.max_pages),
+        min_content_length=max(1, args.min_content_length),
+    )
 
     if not results:
         log.error("No articles collected.")
         return
 
-    OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT_FILE.write_text(
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(
         json.dumps(results, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    log.info("Saved %d articles -> %s", len(results), OUTPUT_FILE)
+    log.info("Saved %d articles -> %s", len(results), args.output)
 
 
 if __name__ == "__main__":
