@@ -10,6 +10,7 @@ from .text_utils import detect_language_tag
 logger = logging.getLogger(__name__)
 
 ACTIVE_ENGINE = "groq"
+SECTION_HEADERS = ["VERDICT:", "KNOWN:", "UNKNOWN:", "HOW_TO_VERIFY:", "SOURCES:"]
 
 
 def summarize_long_claim(text: str) -> str:
@@ -102,6 +103,21 @@ def _unverified_response(language: str) -> str:
     )
 
 
+def _format_section_spacing(text: str) -> str:
+    if not text:
+        return text
+    lines = [line.rstrip() for line in text.splitlines()]
+    out: list[str] = []
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped in SECTION_HEADERS and out and out[-1] != "":
+            out.append("")
+        out.append(line)
+
+    return "\n".join(out).strip()
+
+
 def verify_claim(user_query: str) -> str:
     if len(user_query) > 500:
         user_query = summarize_long_claim(user_query)
@@ -111,7 +127,7 @@ def verify_claim(user_query: str) -> str:
     evidence = search_trusted_evidence(user_query)
     if not evidence:
         logger.info("No relevant trusted evidence found. Returning strict UNVERIFIED response.")
-        return _unverified_response(language)
+        return _format_section_spacing(_unverified_response(language))
 
     rendered_evidence = _render_evidence(evidence)
     prompt = ChatPromptTemplate.from_messages(
@@ -143,21 +159,23 @@ SOURCES:
     try:
         llm = _get_llm(ACTIVE_ENGINE)
         chain = prompt | llm
-        return chain.invoke(
+        response = chain.invoke(
             {
                 "evidence": rendered_evidence,
                 "user_query": user_query,
                 "language_instruction": _language_instruction(language),
             }
         ).content
+        return _format_section_spacing(response)
     except Exception:
         fallback_engine = "openai" if ACTIVE_ENGINE == "groq" else "groq"
         llm = _get_llm(fallback_engine)
         chain = prompt | llm
-        return chain.invoke(
+        response = chain.invoke(
             {
                 "evidence": rendered_evidence,
                 "user_query": user_query,
                 "language_instruction": _language_instruction(language),
             }
         ).content
+        return _format_section_spacing(response)
