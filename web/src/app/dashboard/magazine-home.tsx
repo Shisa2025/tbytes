@@ -258,9 +258,12 @@ export default function MagazineHome({ feed }: { feed: FeedData }) {
     "Misinformation Cases",
     "Credibility Outcomes",
     "Multilingual Access",
-    "Word Cloud",
-    "Fact-check Sources",
+    "Editorial Notebook",
+    "Action Blueprint",
+    "Top FAQ",
+    "Trending Topics",
     "Trust Signals",
+    "Word Cloud",
   ];
   const translatableQueries = useMemo(() => {
     const pool = [...recent, ...risks];
@@ -282,7 +285,7 @@ export default function MagazineHome({ feed }: { feed: FeedData }) {
     const wordStrings = wordMap.map((x) => x.word).filter((x) => shouldTranslate(x));
     return [...new Set([...nonEnglishQueries, ...nonEnglishFaqs, ...nonEnglishLabels, ...factStrings, ...wordStrings].filter(Boolean))];
   }, [recent, risks, frequentQuestions, mediaMix, languageMix, lead?.media_type, lead?.language, fakeFacts, wordMap]);
-  const totalPages = 11;
+  const totalPages = 14;
 
   const isTimeout = (feed.error ?? "").toLowerCase().includes("timeout");
   const issueStamp = issueLabel(feed.updatedAt);
@@ -635,8 +638,8 @@ export default function MagazineHome({ feed }: { feed: FeedData }) {
         </article>
       )}
 
-      {/* Page 8: Editorial Notebook (retired) */}
-      {page === 88 && (
+      {/* Page 8: Editorial Notebook */}
+      {page === 8 && (
         <article className={styles.panel}>
           <header>
             <p className={styles.sectionTag}>Editorial Notebook</p>
@@ -679,8 +682,8 @@ export default function MagazineHome({ feed }: { feed: FeedData }) {
         </article>
       )}
 
-      {/* Page 9: Publishing Board (retired) */}
-      {page === 89 && (
+      {/* Page 9: Publishing Board */}
+      {page === 9 && (
         <article className={styles.panel}>
           <header>
             <p className={styles.sectionTag}>Publishing Board</p>
@@ -710,8 +713,8 @@ export default function MagazineHome({ feed }: { feed: FeedData }) {
         </article>
       )}
 
-      {/* Page 10: Frequent Questions (retired) */}
-      {page === 90 && (
+      {/* Page 10: Frequent Questions */}
+      {page === 10 && (
         <article className={styles.panel}>
           <header>
             <p className={styles.sectionTag}>Top FAQ</p>
@@ -740,12 +743,12 @@ export default function MagazineHome({ feed }: { feed: FeedData }) {
         </article>
       )}
 
-      {/* Page 9: Web Fact Feed */}
-      {page === 9 && (
+      {/* Page 11: Trending Topics */}
+      {page === 11 && (
         <article className={styles.panel}>
           <header>
-            <p className={styles.sectionTag}>Web Fact Feed</p>
-            <h3 className={styles.panelTitle}>Most Recent Fake-News Fact Checks</h3>
+            <p className={styles.sectionTag}>Trending Topics</p>
+            <h3 className={styles.panelTitle}>Misinformation Topics Trending Right Now</h3>
           </header>
           <div className={styles.scrollBlock}>
             {fakeFacts.length === 0 ? (
@@ -772,8 +775,8 @@ export default function MagazineHome({ feed }: { feed: FeedData }) {
         </article>
       )}
 
-      {/* Page 10: Community Signals */}
-      {page === 10 && (
+      {/* Page 12: Community Signals */}
+      {page === 12 && (
         <article className={styles.panel}>
           <header>
             <p className={styles.sectionTag}>Community Signals</p>
@@ -813,8 +816,8 @@ export default function MagazineHome({ feed }: { feed: FeedData }) {
         </article>
       )}
 
-      {/* Page 8: Word Cloud */}
-      {page === 8 && (
+      {/* Page 13: Word Cloud */}
+      {page === 13 && (
         <article className={styles.panel}>
           <header>
             <p className={styles.sectionTag}>Word Cloud</p>
@@ -921,9 +924,10 @@ export default function MagazineHome({ feed }: { feed: FeedData }) {
             { label: "Contents", target: 1 },
             { label: "Enquiries", target: 3 },
             { label: "Multilingual", target: 7 },
-            { label: "Word Cloud", target: 8 },
-            { label: "Fact Feed", target: 9 },
-            { label: "Trust Signals", target: 10 },
+            { label: "FAQ", target: 10 },
+            { label: "Trending", target: 11 },
+            { label: "Trust Signals", target: 12 },
+            { label: "Word Cloud", target: 13 },
           ].map((jump) => (
             <button
               key={jump.label}

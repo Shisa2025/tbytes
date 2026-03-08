@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 
 const MEDIA_OPTIONS = ["All", "text", "video", "image", "audio"];
@@ -17,6 +18,9 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [mode, setMode] = useState<"openai_only" | "hybrid">("hybrid");
+  const [modeBusy, setModeBusy] = useState(false);
+  const [modeError, setModeError] = useState("");
 
   const media = searchParams.get("media");
   const selectedMedia = media && media.trim() ? media : "All";
@@ -49,10 +53,58 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
     router.replace(query ? `${pathname}?${query}` : pathname);
   }
 
+  useEffect(() => {
+    let canceled = false;
+    async function loadMode() {
+      try {
+        const resp = await fetch("/api/mode", { cache: "no-store" });
+        const payload = (await resp.json()) as { ok?: boolean; mode?: "openai_only" | "hybrid"; error?: string };
+        if (canceled) return;
+        if (resp.ok && payload.ok && payload.mode) {
+          setMode(payload.mode);
+          setModeError("");
+        } else {
+          setModeError(payload.error || "Unable to read mode.");
+        }
+      } catch (error) {
+        if (canceled) return;
+        const message = error instanceof Error ? error.message : "Unable to read mode.";
+        setModeError(message);
+      }
+    }
+    loadMode();
+    return () => {
+      canceled = true;
+    };
+  }, []);
+
+  async function onModeChange(next: "openai_only" | "hybrid") {
+    if (modeBusy || next === mode) return;
+    setModeBusy(true);
+    setModeError("");
+    try {
+      const resp = await fetch("/api/mode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: next }),
+      });
+      const payload = (await resp.json()) as { ok?: boolean; mode?: "openai_only" | "hybrid"; error?: string };
+      if (!resp.ok || !payload.ok || !payload.mode) {
+        throw new Error(payload.error || "Mode switch failed.");
+      }
+      setMode(payload.mode);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Mode switch failed.";
+      setModeError(message);
+    } finally {
+      setModeBusy(false);
+    }
+  }
+
   return (
-    <div className="h-screen w-full bg-[#eef2f7]">
-      <div className="flex h-full w-full flex-col lg:flex-row">
-        <aside className="w-full shrink-0 bg-[#1a2744] px-5 py-6 text-white lg:h-full lg:w-[300px]">
+    <div className="h-screen w-full overflow-hidden bg-[#eef2f7]">
+      <div className="flex h-full w-full flex-col overflow-hidden lg:flex-row">
+        <aside className="w-full shrink-0 overflow-y-auto bg-[#1a2744] px-5 py-6 text-white lg:h-full lg:w-[300px]">
 <div className="mb-5 flex flex-col items-center">
             <div className="mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-[#243057] text-xl">Q</div>
             <div className="text-xl font-bold">TBytes</div>
@@ -72,7 +124,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
               Editorial Briefing
             </Link>
             <Link href={factsHref} className={navClass(isFacts)}>
-              Web Fact Desk
+              Trending Topics
             </Link>
 
           </div>
@@ -89,6 +141,40 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
           >
             Open Database Page
           </Link>
+
+          <hr className="mb-4 border-[#2d3f6b]" />
+          <div className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#aab4c8]">Inference Mode</div>
+          <div className="mb-3 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              disabled={modeBusy}
+              onClick={() => onModeChange("hybrid")}
+              className={`h-10 rounded-lg border text-xs font-semibold uppercase tracking-[0.08em] ${
+                mode === "hybrid"
+                  ? "border-[#5f7bc4] bg-[#2f3f70] text-white"
+                  : "border-[#3a4f7a] bg-[#243057] text-[#d7e2f8] hover:bg-[#2f3f70]"
+              }`}
+            >
+              Hybrid
+            </button>
+            <button
+              type="button"
+              disabled={modeBusy}
+              onClick={() => onModeChange("openai_only")}
+              className={`h-10 rounded-lg border text-xs font-semibold uppercase tracking-[0.08em] ${
+                mode === "openai_only"
+                  ? "border-[#5f7bc4] bg-[#2f3f70] text-white"
+                  : "border-[#3a4f7a] bg-[#243057] text-[#d7e2f8] hover:bg-[#2f3f70]"
+              }`}
+            >
+              OpenAI Only
+            </button>
+          </div>
+          <div className="mb-4 text-[11px] font-semibold text-[#aab4c8]">
+            Current: {mode === "openai_only" ? "OpenAI Only" : "Hybrid"}
+            {modeBusy ? " · Updating..." : ""}
+            {modeError ? ` · ${modeError}` : ""}
+          </div>
 
           <hr className="mb-4 border-[#2d3f6b]" />
           <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#aab4c8]">
@@ -108,7 +194,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
           </select>
         </aside>
 
-        <main className="flex-1 overflow-y-auto p-5">{children}</main>
+        <main className="min-h-0 flex-1 overflow-y-auto p-3">{children}</main>
       </div>
     </div>
   );
